@@ -1,13 +1,15 @@
 torch==2.1.0
 torchvision==0.16.0
-pandas==2.1.2
-numpy==1.26.1
-matplotlib==3.8.1
+pandas==2.0.3
+numpy==1.24.4
+matplotlib==3.7.5
 transformers==4.35.0
 einops==0.7.0
 lightning==2.1.1
 opencv-python==4.8.1.78
 omegaconf===2.3.0
 wandb==0.16.0
-scipy==1.11.4
+scipy==1.10.1
 torchxrayvision==1.2.1
+azfuse @ git+https://github.com/microsoft/azfuse.git
+boto3
