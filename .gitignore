@@ -169,3 +169,4 @@ cython_debug/
 
 # Custom files
 sandbox.py
+/.python-version
