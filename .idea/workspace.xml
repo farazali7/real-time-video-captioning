@@ -2,13 +2,62 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="5cad14e3-63b2-469f-9db7-de302fc95e4d" name="Changes" comment="added new image">
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/real-time-video-captioning.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/.github/workflows/test-build.yml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/CODE_OF_CONDUCT.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/LICENSE" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/MANIFEST.in" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/SECURITY.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/SUPPORT.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/configs/azfuse.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images/1.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images/2.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images/3.jpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_MSRVTT/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_MSRVTT_QA/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_TEXTVQA/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_VATEX/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_VQAv2/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_COCO/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_MSRVTT/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_MSRVTT_QA/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_R/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_R_COCO/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_R_TEXTCAPS/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_TEXTCAPS/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_TEXTVQA/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_VATEX/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_VQAv2/parameter.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/storage_account/publicgit.yaml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/common.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_layer/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_layer/builder.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_layer/transform.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_prepare.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/inference.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/CLIP/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/CLIP/clip.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/CLIP/model.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/activations.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/file_utils.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/modeling_bert.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/modeling_utils.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/decoder.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/model.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/process_image.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/taxonomy.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/torch_common.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/train.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/trie_decoder.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/tsv_io.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/requirements.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/setup.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -90,7 +139,7 @@
       <option name="presentableId" value="Default" />
       <updated>1708383968643</updated>
       <workItem from="1708383974929" duration="9965000" />
-      <workItem from="1709147782542" duration="2970000" />
+      <workItem from="1709147782542" duration="4335000" />
     </task>
     <task id="LOCAL-00001" summary="added new image">
       <created>1708565930193</created>
@@ -139,11 +188,6 @@
           <url>file://$PROJECT_DIR$/sandbox.py</url>
           <line>55</line>
           <option name="timeStamp" value="1" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/sandbox.py</url>
-          <line>37</line>
-          <option name="timeStamp" value="7" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
