@@ -169,3 +169,14 @@ cython_debug/
 
 # Custom files
 sandbox.py
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.wmv
+*.flv
+*.mkv
+*.webm
+*.vob
+*.ogv
