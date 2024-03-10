@@ -132,7 +132,7 @@ def random_sampling_from_bins(video_path: str, num_bins: int) -> np.ndarray:
     return frames
 
 
-def clustered_sampling(video_path: str, num_classes: int) -> typing.Tuple[np.ndarray, np.ndarray]:
+def clustered_sampling(video_path: str, num_classes: int, downsampling_ratio: float) -> typing.Tuple[np.ndarray, np.ndarray]:
     """
     Clustered Sampling:
     - First downsample the frames from the video to a smaller dimension for easy clustering.
@@ -147,6 +147,7 @@ def clustered_sampling(video_path: str, num_classes: int) -> typing.Tuple[np.nda
     Args:
     - video_path: str, path to the video.
     - num_classes: int, number of classes to divide the frames into. More classes will result in more frames and information being retained.
+    - downsampling_ratio: float, ratio to downsample the frames to a smaller dimension for easy clustering. Default is 0.1. If the video is too large, then it is better to downsample the frames to a smaller dimension for easy clustering.
     Returns:
     - frames: np.ndarray, shape (num_frames, height, width, 3), frames that are sampled on the logic above from the video.
     - classes: np.ndarray, shape (num_frames,), classes assigned to the frames.
@@ -154,7 +155,8 @@ def clustered_sampling(video_path: str, num_classes: int) -> typing.Tuple[np.nda
     Example:
     >>> video_path = 'path/to/video.mp4'
     >>> num_classes = 10
-    >>> frames, classes = clustered_sampling(video_path, num_classes)
+    >>> downsampling_ratio = 0.1
+    >>> frames, classes = clustered_sampling(video_path, num_classes, downsampling_ratio)
     >>> frames.shape
     (num_frames, height, width, 3)
     >>> classes.shape
@@ -170,7 +172,9 @@ def clustered_sampling(video_path: str, num_classes: int) -> typing.Tuple[np.nda
         if ret:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             original_frames.append(frame)
-            transformed_frame = cv2.resize(frame, (32, 32))
+            new_height = int(frame.shape[0] * downsampling_ratio)
+            new_width = int(frame.shape[1] * downsampling_ratio)
+            transformed_frame = cv2.resize(frame, (new_width, new_height))
             transformed_frame = transformed_frame.flatten()
             transformed_frames.append(transformed_frame)
 
@@ -193,7 +197,8 @@ def clustered_sampling(video_path: str, num_classes: int) -> typing.Tuple[np.nda
     video.release()
     return frames, classes
 
-def frame_difference_sampling(video_path: str, threshold: int) -> np.ndarray:
+
+def frame_mse_difference_sampling(video_path: str, threshold: int) -> np.ndarray:
     """
     Frame Difference Sampling:
     - The video is sequentially traversed.
@@ -201,6 +206,11 @@ def frame_difference_sampling(video_path: str, threshold: int) -> np.ndarray:
     - The next frame that will be sampled will only be samples if the difference between the current frame and the previous frame is greater than a certain threshold.
     - The reference frame is updated to the current frame if the difference is greater than the threshold.
     - The number of frames that are output depends on how frequently is the content changing in the video.
+    - The difference calculation is done using the mean squared error (MSE) method.
+    - The mean squared error is calculated between the current frame and the previous frame
+    - In the end the total MSE is normalized by the number of frames as well as the dimensions of the frames (to be fair).
+    - Honestly, this is not a good method to sample frames from a video, but it is a good method to understand the difference between the frames.
+    - Its pretty hard to get a good threshold value for this method.
     Args:
     - video_path: str, path to the video.
     - threshold: int, threshold for the difference between the frames.
@@ -209,8 +219,8 @@ def frame_difference_sampling(video_path: str, threshold: int) -> np.ndarray:
 
     Example:
     >>> video_path = 'path/to/video.mp4'
-    >>> threshold = 100
-    >>> frames = frame_difference_sampling(video_path, threshold)
+    >>> threshold = 10 # Figure out a good threshold value by testing the method on different videos.
+    >>> frames = frame_mse_difference_sampling(video_path, threshold)
     >>> frames.shape
     (num_frames, height, width, 3)
     """
@@ -224,8 +234,7 @@ def frame_difference_sampling(video_path: str, threshold: int) -> np.ndarray:
         if ret:
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             previous_frame = retained_frames[-1]
-            difference = cv2.absdiff(previous_frame, frame)
-            difference = np.sum(difference)
+            difference = np.mean((frame - previous_frame) ** 2)
             if difference > threshold:
                 retained_frames.append(frame)
 
@@ -233,6 +242,59 @@ def frame_difference_sampling(video_path: str, threshold: int) -> np.ndarray:
     
     video.release()
     return frames
+
+
+def scene_change_detection_sampling(video_path: str, threshold: float) -> typing.Tuple[np.ndarray, np.ndarray]:
+    """
+    Scene Change Detection Sampling:
+    - The video is sequentially traversed.
+    - The first frame is always sampled.
+    - The next frame that will be sampled will only be samples if the difference between the current frame and the previous frame is greater than a certain threshold.
+    - The reference frame is updated to the current frame if the difference is greater than the threshold.
+    - The number of frames that are output depends on how frequently is the content changing in the video.
+    - This method is expected to be better than the frame difference sampling method.
+    - The difference calculation is done using the histogram comparison method.
+    Args:
+    - video_path: str, path to the video.
+    - threshold: float, threshold for the difference between the frames (keep it 10^(some number) if not sure).
+    Returns:
+    - frames: np.ndarray, shape (num_frames, height, width, 3), frames that are sampled on the logic above from the video.
+    - scene_changes: np.ndarray, shape (num_scene_changes,), indices of the frames where the scene changes.
+
+    Example:
+    >>> video_path = 'path/to/video.mp4'
+    >>> threshold = 1000 # Figure out a good threshold value by testing the method on different videos.
+    >>> frames, scene_changes = scene_change_detection_sampling(video_path, threshold)
+    >>> frames.shape
+    (num_frames, height, width, 3)
+    >>> scene_changes.shape
+    (num_scene_changes,)
+    """
+    video = cv2.VideoCapture(video_path)
+
+    num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    retained_frames = [video.read()[1]]
+    scene_changes = []
+
+    for i in range(1, num_frames):
+        ret, frame = video.read()
+        if ret:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            previous_frame = retained_frames[-1]
+            difference = cv2.compareHist(
+                cv2.calcHist([previous_frame], [0], None, [256], [0, 256]), 
+                cv2.calcHist([frame], [0], None, [256], [0, 256]), 
+                cv2.HISTCMP_CHISQR
+            )
+            if difference > threshold:
+                retained_frames.append(frame)
+                scene_changes.append(i)
+
+    frames = np.array(retained_frames, dtype=D_TYPE)
+    scene_changes = np.array(scene_changes, dtype=D_TYPE)
+    
+    video.release()
+    return frames, scene_changes
 
 
 def main(video_path: str) -> None:
@@ -248,9 +310,9 @@ def main(video_path: str) -> None:
     (First you need to be at the root directory to run the cmd executable commands)
     >>> pwd
     .../real-time-video-captioning
-    >>> python real-time-video-captioning\utils\frame_sampling_methods.py --function frame_difference_sampling
-    // This will run the frame_difference_sampling function and display the sampled frames as a video.
-    >>> python real-time-video-captioning\utils\frame_sampling_methods.py --function uniform_sampling
+    >>> python utils\frame_sampling_methods.py --function frame_mse_difference_sampling
+    // This will run the frame_mse_difference_sampling function and display the sampled frames as a video.
+    >>> python utils\frame_sampling_methods.py --function uniform_sampling
     // This will run the uniform_sampling function and display the sampled frames as a video.
     """
     try:
@@ -278,15 +340,23 @@ def main(video_path: str) -> None:
 
     elif args.function == "clustered_sampling":
         num_classes = 25
-        frames, _ = clustered_sampling(video_path, num_classes)
+        downsampling_ratio = 0.1
+        frames, _ = clustered_sampling(video_path, num_classes, downsampling_ratio)
         print(frames.shape)
         play_video_from_frames(frames, 10)
 
-    elif args.function == "frame_difference_sampling":
-        threshold = 1000
-        frames = frame_difference_sampling(video_path, threshold)
+    elif args.function == "frame_mse_difference_sampling":
+        threshold = 10
+        frames = frame_mse_difference_sampling(video_path, threshold)
         print(frames.shape)
         play_video_from_frames(frames, 30)
+
+    elif args.function == "scene_change_detection_sampling":
+        threshold = 1000
+        frames, scene_changes = scene_change_detection_sampling(video_path, threshold)
+        print(frames.shape)
+        print(scene_changes)
+        play_video_from_frames(frames, 10)
     
     else:
         retention_rate = 0.5
@@ -305,7 +375,7 @@ def main(video_path: str) -> None:
         play_video_from_frames(frames, 10)
 
         threshold = 1
-        frames = frame_difference_sampling(video_path, threshold)
+        frames = frame_mse_difference_sampling(video_path, threshold)
         print(frames.shape)
         play_video_from_frames(frames, 30)
 
@@ -316,11 +386,12 @@ if __name__ == "__main__":
     - Provide the path to the video that you want to test the functions on (be sure to include this from the root).
     - Each function should be able to return the frames that are sampled from the video.
     - Depending on the number of frames being returned, you can choose to play the subframes as a video or sequence of images.
+    - Be at the root directory, if not then adjust the path to the video accordingly.
     """
     warnings.filterwarnings("ignore")
 
     # Selecting a video (keep the video in the data/videos folder)
-    video_path = 'real-time-video-captioning/data/videos/test_1.mp4'
+    video_path = 'data/videos/test_1.mp4'
 
     # Testing the functions
     main(video_path = video_path)
