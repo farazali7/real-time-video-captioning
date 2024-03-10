@@ -1,0 +1,7 @@
+include requirements.txt
+recursive-include GenerativeImage2Text *
+recursive-include data *
+recursive-include utils *
+recursive-include tests *
+recursive-include results *
+recursive-include src *
