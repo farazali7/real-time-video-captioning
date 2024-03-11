@@ -15,13 +15,13 @@ cd real-time-video-captioning
 ### Create and activate a virtual environment (optional but recommended)
 
 To avoid package version conflicts, it's recommended to create and activate a virtual environment. Here are the steps for different operating systems:   
-- Windows
+- Windows:
 ```shell
 python -m venv venv
 venv\Scripts\activate
 ```
 
-- macOS
+- macOS:
 ```shell
 python -m venv venv
 source venv/bin/activate
@@ -39,10 +39,10 @@ python setup.py build develop
 
 You would also need to install azcopy to download some of the data. Follow the appropriate instructions for your operating system:   
 
-- Windows
+- Windows:  
 Manually install `azcopy` by checking out the source repository [azfuse](https://github.com/microsoft/azfuse), or download the installer from the official Microsoft website.
 
-- macOS
+- macOS:  
 If you are running on macOS and have Homebrew installed, you can install `azcopy` using the following command:
 ```shell
 brew install azcopy
