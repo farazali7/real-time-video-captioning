@@ -9,7 +9,7 @@ This repository contains the source code of the project "Real Time Video Caption
   cd real-time-video-captioning
   ```
 
-- Install the package  
+- Install the packages  
   ```shell
   pip install -r requirements.txt
   python setup.py build develop
