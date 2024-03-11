@@ -2,62 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="5cad14e3-63b2-469f-9db7-de302fc95e4d" name="Changes" comment="added new image">
+      <change afterPath="$PROJECT_DIR$/src/utils/dataloader.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/.github/workflows/test-build.yml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/CODE_OF_CONDUCT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/LICENSE" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/MANIFEST.in" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/SECURITY.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/SUPPORT.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/configs/azfuse.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images/1.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images/2.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images/3.jpg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_MSRVTT/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_MSRVTT_QA/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_TEXTVQA/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_VATEX/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_BASE_VQAv2/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_COCO/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_MSRVTT/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_MSRVTT_QA/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_R/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_R_COCO/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_R_TEXTCAPS/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_TEXTCAPS/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_TEXTVQA/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_VATEX/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/models/GIT_LARGE_VQAv2/parameter.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/aux_data/storage_account/publicgit.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/common.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_layer/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_layer/builder.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_layer/transform.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/data_prepare.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/inference.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/CLIP/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/CLIP/clip.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/CLIP/model.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/activations.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/file_utils.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/modeling_bert.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/bert/modeling_utils.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/layers/decoder.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/model.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/process_image.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/taxonomy.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/torch_common.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/train.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/trie_decoder.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/generativeimage2text/tsv_io.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/requirements.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/GenerativeImage2Text/setup.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,7 +47,29 @@
       <recent name="$PROJECT_DIR$/GenerativeImage2Text/aux_data/images" />
     </key>
   </component>
-  <component name="RunManager">
+  <component name="RunManager" selected="Python.dataloader">
+    <configuration name="dataloader" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="real-time-video-captioning" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/utils/dataloader.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <configuration name="sandbox" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="real-time-video-captioning" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -124,8 +92,13 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <list>
+      <item itemvalue="Python.dataloader" />
+      <item itemvalue="Python.sandbox" />
+    </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.dataloader" />
         <item itemvalue="Python.sandbox" />
       </list>
     </recent_temporary>
@@ -139,7 +112,7 @@
       <option name="presentableId" value="Default" />
       <updated>1708383968643</updated>
       <workItem from="1708383974929" duration="9965000" />
-      <workItem from="1709147782542" duration="4335000" />
+      <workItem from="1709147782542" duration="7353000" />
     </task>
     <task id="LOCAL-00001" summary="added new image">
       <created>1708565930193</created>
@@ -189,10 +162,21 @@
           <line>55</line>
           <option name="timeStamp" value="1" />
         </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/utils/dataloader.py</url>
+          <line>9</line>
+          <option name="timeStamp" value="8" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/src/utils/dataloader.py</url>
+          <line>7</line>
+          <option name="timeStamp" value="9" />
+        </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/real_time_video_captioning$sandbox.coverage" NAME="sandbox Coverage Results" MODIFIED="1708812262426" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/real_time_video_captioning$dataloader.coverage" NAME="dataloader Coverage Results" MODIFIED="1709684427527" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/" />
   </component>
 </project>
