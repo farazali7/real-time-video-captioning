@@ -1,7 +1,7 @@
 import numpy as np
 import cv2, argparse
 
-from frame_sampling_methods import play_video_from_frames
+from src.utils.frame_sampling_methods import play_video_from_frames
 
 
 def get_video_frames(video_path: str) -> np.ndarray:
