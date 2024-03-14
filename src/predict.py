@@ -35,6 +35,7 @@ def perform_inference(model, prefix, param, img_path):
             'prefix': torch.tensor(input_ids).unsqueeze(0),
         })
     cap = tokenizer.decode(result['predictions'][0].tolist(), skip_special_tokens=True)
+    print("Caption:", cap)
     logging.info('output: {}'.format(cap))
 
 
@@ -50,7 +51,7 @@ if __name__ == "__main__":
     model.eval()
     load_state_dict(model, ckpt)
 
-    img_path = 'GenerativeImage2Text/aux_data/images/3.jpg'
+    img_path = 'GenerativeImage2Text/aux_data/images/2.jpg'
     perform_inference(model, '', param, img_path)
 
     print('Done')
