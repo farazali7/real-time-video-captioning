@@ -872,6 +872,7 @@ class CaptioningModel(nn.Module):
 
         if not self.training or (not self.scst):
             return self.forward_one_ce(batch, visual_features, visual_features_valid, return_info)
+            
         else:
             assert self.training and self.scst
             return self.forward_one_scst(batch, visual_features, visual_features_valid)
@@ -998,15 +999,18 @@ class CaptioningModel(nn.Module):
 
         search_param = search_param or {}
         # the start_predictions are not in predicted_caption
-        predicted_caption, logprobs = self.decoder.search(
+        predicted_caption, logprobs,logits_dict = self.decoder.search(
             start_predictions, decoding_step, **search_param
         )
+        
         if 'prefix' in batch:
             # we need to remove prefix from predicted_caption
             predicted_caption = predicted_caption[:, start_predictions.shape[1]:]
         output_dict = {
             'predictions': predicted_caption,
             'logprobs': logprobs,
+            'logits_dict': logits_dict,
+            'visual_features': visual_features,
         }
         return output_dict
 
@@ -1124,10 +1128,15 @@ class GeneratorWithBeamSearch(object):
 
         # done sentences
         done = [False for _ in range(batch_size)]
-
+        saved_logits={}
         while cur_len < max_length:
             scores = step(input_ids)  # (batch_size * num_beams, cur_len, vocab_size)
             vocab_size = scores.shape[-1]
+            saved_logits[cur_len]={}
+            for i in range(0,len(scores)):
+                word_idx=scores[i].argmax().item()
+                saved_logits[cur_len][word_idx]=scores[i].detach().cpu().numpy()
+
 
             ## if model has past, then set the past variable to speed up decoding
             #if self._do_output_past(outputs):
@@ -1142,7 +1151,6 @@ class GeneratorWithBeamSearch(object):
                             scores[i, previous_token] *= repetition_penalty
                         else:
                             scores[i, previous_token] /= repetition_penalty
-
             if do_sample:
                 # Temperature (higher temperature => more likely to sample low probability tokens)
                 if temperature != 1.0:
@@ -1167,13 +1175,13 @@ class GeneratorWithBeamSearch(object):
             else:
                 # do greedy beam search
                 scores = F.log_softmax(scores, dim=-1)  # (batch_size * num_beams, vocab_size)
+                original_scores=scores
                 assert scores.size() == (batch_size * num_beams, vocab_size)
                 # Add the log prob of the new beams to the log prob of the beginning of the sequence (sum of logs == log of the product)
                 _scores = scores + beam_scores[:, None].expand_as(scores)  # (batch_size * num_beams, vocab_size)
                 # re-organize to group the beam together (we are keeping top hypothesis accross beams)
                 _scores = _scores.view(batch_size, num_beams * vocab_size)  # (batch_size, num_beams * vocab_size)
                 next_scores, next_words = torch.topk(_scores, per_node_beam_size * num_beams, dim=1, largest=True, sorted=True)
-
             assert next_scores.size() == next_words.size() == (batch_size, per_node_beam_size * num_beams)
 
             # next batch beam content
@@ -1191,6 +1199,7 @@ class GeneratorWithBeamSearch(object):
 
                 # next sentence beam content
                 next_sent_beam = []
+
                 # next words for this sentence
                 for idx, score in zip(next_words[batch_ex], next_scores[batch_ex]):
 
@@ -1287,7 +1296,7 @@ class GeneratorWithBeamSearch(object):
                 decoded[batch_idx, best_idx, tgt_len[batch_idx, best_idx] - 1] = eos_token_ids[0]
         if num_keep_best == 1:
             decoded = decoded.squeeze(dim=1)
-        return decoded, logprobs
+        return decoded, logprobs,saved_logits
 
 class BeamHypotheses(object):
     def __init__(self, n_hyp, max_length, length_penalty, early_stopping):
