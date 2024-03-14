@@ -1,9 +1,9 @@
 import torch
-from GenerativeImage2Text.generativeimage2text.model import get_git_model
-from GenerativeImage2Text.generativeimage2text.torch_common import load_state_dict
-from GenerativeImage2Text.generativeimage2text.tsv_io import load_from_yaml_file
-from GenerativeImage2Text.generativeimage2text.process_image import load_image_by_pil
-from GenerativeImage2Text.generativeimage2text.inference import get_image_transform
+from generativeimage2text.model import get_git_model
+from generativeimage2text.torch_common import load_state_dict
+from generativeimage2text.tsv_io import load_from_yaml_file
+from generativeimage2text.process_image import load_image_by_pil
+from generativeimage2text.inference import get_image_transform
 from transformers import BertTokenizer
 import logging
 

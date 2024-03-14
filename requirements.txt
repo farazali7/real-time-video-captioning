@@ -15,3 +15,4 @@ azfuse @ git+https://github.com/microsoft/azfuse.git
 boto3==1.34.47
 evaluate==0.4.0
 aac-metrics==0.5.3
+git+https://github.com/microsoft/GenerativeImage2Text.git

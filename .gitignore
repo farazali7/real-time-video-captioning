@@ -169,6 +169,7 @@ cython_debug/
 
 # Custom files
 sandbox.py
+/.python-version
 
 # Video files
 *.mp4
