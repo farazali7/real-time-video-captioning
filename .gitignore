@@ -171,6 +171,7 @@ cython_debug/
 # Custom files
 sandbox.py
 /.python-version
+.DS_Store
 
 # Video files
 *.mp4
