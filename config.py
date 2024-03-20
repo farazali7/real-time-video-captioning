@@ -37,6 +37,6 @@ cfg = {
         'StudentCandidate': {},
     },
     'WANDB': {
-        "MODE": 'online'  # One of {'online', 'offline', 'disabled'}
+        "MODE": 'disabled'  # One of {'online', 'offline', 'disabled'}
     }
 }
