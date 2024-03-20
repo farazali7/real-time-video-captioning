@@ -20,7 +20,7 @@ from utils.dataloader import CaptionDataset
 from transformers import BertTokenizer
 
 from config import cfg
-from src.models.model import StudentCandidate
+from src.models.model import GenerativeImageTextModel
 from lightning.pytorch.loggers import WandbLogger
 
 os.environ['WANDB_MODE'] = cfg['WANDB']['MODE']
@@ -61,7 +61,7 @@ def train(train_paths: Tuple[str, str],train_ids:List[str], train_data: pd.DataF
     val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0)
 
     # Instantiate the model
-    model = StudentCandidate(**model_args)
+    model = GenerativeImageTextModel(**model_args)
     checkpoint = ModelCheckpoint(**chkpt_args)
 
     # log gradients and model topology
