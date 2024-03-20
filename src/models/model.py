@@ -10,6 +10,7 @@ from transformers import BertTokenizer
 import functools
 from torch.nn import functional as F
 import timm
+import lightning as L
 
 
 class TinyVIT(nn.Module):
@@ -327,6 +328,7 @@ def get_git_model(tokenizer, param):
         param.get('image_encoder_type', 'CLIPViT_B_16'),
         input_resolution=param.get('test_crop_size', 224),
     )
+
     text_decoder = TransformerDecoderTextualHead(
         visual_feature_size=param.get('visual_feature_size', 768),
         vocab_size=30522,
@@ -382,3 +384,53 @@ class GenerativeImageTextTeacher(nn.Module):
         out = self.model(x)
 
         return out
+
+
+class DistillationTrainer(L.LightningModule):
+    """
+    PyTorch Lightning module for knowledge distillation training
+    """
+    def __init__(self, teacher, student):
+        """ Constructor.
+
+        Args:
+            teacher: Teacher model
+            student: Student model
+        """
+        super(DistillationTrainer, self).__init__()
+        self.teacher = teacher
+        self.student = student
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+
+        out_student = self.student(x)
+        out_teacher = self.teacher(x)
+
+        # Add knowledge distillation events here
+        loss = self.loss(out_student, out_teacher)
+
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+
+        out_student = self.student(x)
+        out_teacher = self.teacher(x)
+
+        loss = self.loss(out_student, out_teacher)
+
+        self.log("val_loss", loss, prog_bar=True)
+
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.student.parameters(), lr=self.lr)
+        lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                                  patience=4,
+                                                                  min_lr=1e-8,
+                                                                  factor=0.5)
+
+        return [optimizer], [{"scheduler": lr_scheduler, "interval": "epoch", "monitor": "val_loss"}]
