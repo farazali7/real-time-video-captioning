@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from generativeimage2text.layers.decoder import CaptioningModel, BeamHypotheses, top_k_top_p_filtering, \
     GeneratorWithBeamSearch
-from generativeimage2text.model import get_git_model
+from generativeimage2text.model import get_image_encoder, TransformerDecoderTextualHead
 from generativeimage2text.torch_common import load_state_dict
 from generativeimage2text.tsv_io import load_from_yaml_file
 from ..predict import perform_inference
@@ -45,8 +45,8 @@ class GenerativeImageTextModel(CaptioningModel):
             param: Additional configurations
         """
         super().__init__(
-            image_encoder=image_encoder,
-            text_decoder=text_decoder,
+            image_encoder,
+            text_decoder,
             decoder=decoder,
             sos_index=tokenizer.cls_token_id,
             eos_index=tokenizer.sep_token_id,
@@ -99,6 +99,7 @@ class GeneratorWithBeamSearchV2(GeneratorWithBeamSearch):
     """
     Decoder model used in GIT but with custom search functionality.
     """
+
     def __init__(self, *args, **kwargs):
         """ Constructor.
 
@@ -319,3 +320,65 @@ class GeneratorWithBeamSearchV2(GeneratorWithBeamSearch):
         if num_keep_best == 1:
             decoded = decoded.squeeze(dim=1)
         return decoded, logprobs, saved_logits
+
+
+def get_git_model(tokenizer, param):
+    image_encoder = get_image_encoder(
+        param.get('image_encoder_type', 'CLIPViT_B_16'),
+        input_resolution=param.get('test_crop_size', 224),
+    )
+    text_decoder = TransformerDecoderTextualHead(
+        visual_feature_size=param.get('visual_feature_size', 768),
+        vocab_size=30522,
+        hidden_size=768,
+        num_layers=6,
+        attention_heads=12,
+        feedforward_size=768 * 4,
+        max_caption_length=1024,
+        mask_future_positions=True,
+        padding_idx=0,
+        decoder_type='bert_en',
+        visual_projection_type='linearLn',
+    )
+
+    decoder = GeneratorWithBeamSearchV2(
+        eos_index=tokenizer.sep_token_id,
+        # max_steps=40,
+        max_steps=1024,
+        beam_size=4,
+        length_penalty=0.6,
+    )
+
+    model = GenerativeImageTextModel(
+        image_encoder,
+        text_decoder,
+        decoder=decoder,
+        tokenizer=tokenizer,
+        param=param
+    )
+
+    return model
+
+
+class GenerativeImageTextTeacher(nn.Module):
+    """
+    Generative Image 2 Text Teacher Model (Wrapper with tokenizer and params for instantiation)
+    """
+
+    def __init__(self, param_path: str):
+        """ Constructor.
+
+        Args:
+            param_path: Path to model configuration YAML
+        """
+        super(GenerativeImageTextTeacher, self).__init__()
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        self.param = load_from_yaml_file(param_path)
+        self.model = get_git_model(self.tokenizer, self.param)
+
+        self.model.eval()
+
+    def forward(self, x):
+        out = self.model(x)
+
+        return out
