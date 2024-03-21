@@ -29,6 +29,35 @@ class TinyVIT(nn.Module):
         return out
 
 
+class StudentCandidateV1(nn.Module):
+    """
+    Student model V1 candidate for video captioning tasks. Uses TinyVIT + Transformer Decoder architectures.
+    """
+    def __init__(self, image_enc_name: str, d_model: int, n_head: int,
+                 d_ffn: int, dropout: float, num_decoder_layers: int):
+        """ Constructor.
+
+        Args:
+            image_enc_name: Name of TinyVIT image encoder to load
+            d_model: Hidden dimensionality of decoder layers
+            n_head: Number of attention heads in decoder layers
+            d_ffn: Hidden dimensionality of feed forward networks in decoder layers
+            dropout: Dropout rate
+            num_decoder_layers: Number of stacked decoder layers in decoder module
+        """
+        super(StudentCandidateV1, self).__init__()
+        self.image_encoder = TinyVIT(image_enc_name)
+        self.decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=n_head,
+                                                        dim_feedforward=d_ffn, dropout=dropout)
+        self.decoder = nn.TransformerDecoder(self.decoder_layer, num_decoder_layers)
+
+    def forward(self, x):
+        x = self.image_encoder(x)
+        out = self.decoder(x)
+
+        return out
+
+
 class GenerativeImageTextModel(CaptioningModel):
     """
     Generative Image 2 Text (GIT) Model reimplementation with custom behaviour changes to help with
@@ -390,16 +419,18 @@ class DistillationTrainer(L.LightningModule):
     """
     PyTorch Lightning module for knowledge distillation training
     """
-    def __init__(self, teacher, student):
+    def __init__(self, teacher, student, loss):
         """ Constructor.
 
         Args:
             teacher: Teacher model
             student: Student model
+            loss: Loss function to use in trainer
         """
         super(DistillationTrainer, self).__init__()
         self.teacher = teacher
         self.student = student
+        self.loss = loss
 
     def training_step(self, batch, batch_idx):
         x, y = batch
