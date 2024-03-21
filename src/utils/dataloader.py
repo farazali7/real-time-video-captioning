@@ -69,7 +69,7 @@ class CaptionDataset(Dataset):
 
         # Sample n frames from video to use
         # TODO: Make this more sophisticated before training
-        frames = frames[torch.arange(0, frames.shape[0], 6)[:50]]
+        frames = frames[torch.arange(0, frames.shape[0], 5)[:16]]
 
         # frames shape: [N, C, 224, 224], caption shape: [?]
         return {'frames': frames, 'caption': encoded_caption}

@@ -3,12 +3,12 @@ TRAINING SCRIPT
 '''
 
 import os
-import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple,List
+from typing import Tuple, List, Dict
 import pandas as pd
 
 import lightning as L
+import torch.cuda
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
@@ -16,11 +16,11 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler as DS
-from utils.dataloader import CaptionDataset
+from utils.dataloader import CaptionDataset, collate_fn
 from transformers import BertTokenizer
 
 from config import cfg
-from src.models.model import GenerativeImageTextModel
+from src.models.model import StudentCandidateV1, GenerativeImageTextTeacher, DistillationTrainer
 from lightning.pytorch.loggers import WandbLogger
 
 os.environ['WANDB_MODE'] = cfg['WANDB']['MODE']
@@ -34,35 +34,42 @@ def plot_loss(loss_array):
     plt.show()
 
 
-def train(train_paths: Tuple[str, str],train_ids:List[str], train_data: pd.DataFrame, val_paths: Tuple[str, str],val_ids:List[str], test_data: pd.DataFrame, model_args: dict,
-          log_args:dict, chkpt_args:dict, trainer_args: dict, batch_size:int):
-    """Train a model.
+def train(train_data_args: Dict, val_data_args: Dict,
+          student_model_args: Dict, teacher_model_args: Dict,
+          callback_args: Dict, trainer_args: Dict, batch_size: int, lr: float):
+    """ Training function for knowledge distillation experiments
 
     Args:
-        data_path: Path to data files
-        model_args: Dictionary of kwargs for model
-        trainer_args: Dictionary of kwargs for Trainer
+        train_data_args: Dictionary of train dataset arguments
+        val_data_args: Dictionary of val dataset arguments
+        student_model_args: Dictionary of student model instance arguments
+        teacher_model_args: Dictionary of teacher model instance arguments
+        callback_args: Dictionary of training callback arguments
+        trainer_args: Dictionary of PyTorch Lightning Trainer arguments
+        batch_size: Batch size
+        lr: Learning rate
 
     Returns:
         Trained model instance.
     """
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-
-    # ---------------
-
     # WANDB Logger
     wandb_logger = WandbLogger(project="real-time-video-captioning")
 
-    train_dataset = CaptionDataset(*train_paths, vid_ids=train_ids,data=train_data, tokenizer=tokenizer)
-    val_dataset = CaptionDataset(*val_paths, vid_ids=val_ids,data=test_data,tokenizer=tokenizer)
+    # Create datasets and dataloaders
+    train_dataset = CaptionDataset(**train_data_args)
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=1,
+                          collate_fn=collate_fn)
 
-    # data loader  
-    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=1)
-    val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0)
+    val_dataset = CaptionDataset(**val_data_args)
+    val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0,
+                        collate_fn=collate_fn)
 
-    # Instantiate the model
-    model = GenerativeImageTextModel(**model_args)
-    checkpoint = ModelCheckpoint(**chkpt_args)
+    # Instantiate the student and teacher models and pass to Lightning module
+    student_model = StudentCandidateV1(**student_model_args)
+    teacher_model = GenerativeImageTextTeacher(**teacher_model_args)
+    distillation_model = DistillationTrainer(teacher=teacher_model, student=student_model, lr=lr)
+
+    callback = ModelCheckpoint(**callback_args)
 
     # log gradients and model topology
     # wandb_logger.watch(model)
@@ -70,46 +77,72 @@ def train(train_paths: Tuple[str, str],train_ids:List[str], train_data: pd.DataF
     # logger = TensorBoardLogger(**log_args)
 
     # Instantiate the PyTorch Lightning Trainer
-    trainer = L.Trainer(**trainer_args, callbacks=checkpoint, logger=logger)
-    
-    # Fit the model
-    trainer.fit(model=model, train_dataloaders=train_dl, val_dataloaders=val_dl)
+    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger)
 
-    wandb_logger.experiment.unwatch(model)
+    # Fit the model
+    trainer.fit(model=distillation_model, train_dataloaders=train_dl, val_dataloaders=val_dl)
+
+    wandb_logger.experiment.unwatch(distillation_model)
+
+    return distillation_model
 
 
 if __name__ == "__main__":
     # Organize arguments here
     train_args = cfg['TRAIN']
-    model_def = train_args['model_def']
 
-    # with open(cfg['DATA']['CAPTIONS_PATH'], 'r') as file:
-    #     data = json.load(file)
-    # annotations_list = data['annotations']
-    # annotations_df = pd.DataFrame(annotations_list)
+    # Dataset arguments
+    data_path = cfg['DATA']['VIDEOS_PATH']
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+    random_state = cfg['SEED']
 
     df = pd.read_csv(cfg['DATA']['CAPTIONS_PATH'])
-    train_df = df[df['split'] == 'train']
-    test_df = df[df['split'] == 'test']
 
-    with open(cfg['DATA']['TRAIN_IDS'], 'r') as file:
-        train_ids = [line.strip() for line in file]
+    train_data = df[df['split'] == 'train']
+    train_ids = train_data['image_id'].unique().tolist()
+    train_data_args = {'data_path': data_path,
+                       'vid_ids': train_ids,
+                       'data': train_data,
+                       'tokenizer': tokenizer,
+                       'random_state': random_state}
 
-    with open(cfg['DATA']['VAL_IDS'], 'r') as file:
-        val_ids = [line.strip() for line in file]
+    val_data = df[df['split'] == 'val']
+    val_ids = val_data['image_id'].unique().tolist()
+    val_data_args = {'data_path': data_path,
+                     'vid_ids': val_ids,
+                     'data': val_data,
+                     'tokenizer': tokenizer,
+                     'random_state': random_state}
 
-    model_instance_args = cfg['MODEL'][model_def]
-    chkpt_args = cfg['CALLBACK']
+    test_data = df[df['split'] == 'test']
+    test_ids = test_data['image_id'].unique().tolist()
+    test_data_args = {'data_path': data_path,
+                      'vid_ids': test_ids,
+                      'data': test_data,
+                      'tokenizer': tokenizer,
+                      'random_state': random_state}
+
+    # Model arguments
+    student_model_def = train_args['STUDENT_MODEL_DEF']
+    student_model_args = cfg['MODEL'][student_model_def]
+
+    teacher_model_def = train_args['TEACHER_MODEL_DEF']
+    teacher_model_args = cfg['MODEL'][teacher_model_def]
+
+    # Checkpoint arguments
+    callback_args = cfg['CALLBACK']
+
+    # Trainer arguments
     trainer_args = train_args['TRAINER']
-    LR = train_args['LR']
-    train_data_path = cfg['DATA']['TRAIN_PATH']
-    train_ids=cfg['DATA']['TRAIN_IDS']
-    val_data_path = cfg['DATA']['VAL_PATH']
-    model_args = {'model_args': model_instance_args,
-                  'lr': LR}
-    log_args = cfg['LOGGER']
+    is_accelerator_available = torch.cuda.is_available()
+    trainer_args['accelerator'] = 'gpu' if is_accelerator_available else 'cpu'
+    trainer_args['devices'] = torch.cuda.device_count() if is_accelerator_available else 1
+    if not is_accelerator_available:  # If on CPU then avoid bfloat16 (used for GPUs) issue
+        trainer_args['precision'] = '32-true'
+
     batch_size = train_args['BATCH_SIZE']
+    lr = train_args['LR']
 
     # Train the model
-    train(train_data_path,train_ids,train_df,val_data_path,val_ids,test_df, model_args, log_args, chkpt_args, trainer_args, batch_size=batch_size)
-    
+    train(train_data_args, val_data_args, student_model_args, teacher_model_args,
+          callback_args, trainer_args, batch_size, lr)

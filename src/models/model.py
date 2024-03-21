@@ -3,9 +3,7 @@ import torch.nn as nn
 from generativeimage2text.layers.decoder import CaptioningModel, BeamHypotheses, top_k_top_p_filtering, \
     GeneratorWithBeamSearch
 from generativeimage2text.model import get_image_encoder, TransformerDecoderTextualHead
-from generativeimage2text.torch_common import load_state_dict
 from generativeimage2text.tsv_io import load_from_yaml_file
-from ..predict import perform_inference
 from transformers import BertTokenizer
 import functools
 from torch.nn import functional as F
@@ -23,8 +21,8 @@ class TinyVIT(nn.Module):
         # data_config = timm.data.resolve_model_data_config(self.model)
         # transforms = timm.data.create_transform(**data_config, is_training=False)
 
-    def forward(self, input):
-        out = self.model(input)
+    def forward(self, x):
+        out = self.model(x)
 
         return out
 
@@ -52,6 +50,9 @@ class StudentCandidateV1(nn.Module):
         self.decoder = nn.TransformerDecoder(self.decoder_layer, num_decoder_layers)
 
     def forward(self, x):
+        # x shape: [B, F, C, H, W]
+        # Combine frames axis with batch to get shape: [BxF, C, H, W]
+        x = x.view(x.shape[0]*x.shape[1], *x.shape[2:])
         x = self.image_encoder(x)
         out = self.decoder(x)
 
@@ -407,6 +408,11 @@ class GenerativeImageTextTeacher(nn.Module):
         self.param = load_from_yaml_file(param_path)
         self.model = get_git_model(self.tokenizer, self.param)
 
+        # Freeze model parameters
+        for p in self.model.parameters():
+            p.requires_grad = False
+
+        # Deactivate behaviour of BN and Dropout layers
         self.model.eval()
 
     def forward(self, x):
@@ -419,21 +425,22 @@ class DistillationTrainer(L.LightningModule):
     """
     PyTorch Lightning module for knowledge distillation training
     """
-    def __init__(self, teacher, student, loss):
+    def __init__(self, teacher, student, lr):
         """ Constructor.
 
         Args:
             teacher: Teacher model
             student: Student model
-            loss: Loss function to use in trainer
+            lr: Learning rate
         """
         super(DistillationTrainer, self).__init__()
         self.teacher = teacher
         self.student = student
-        self.loss = loss
+        self.lr = lr
+        self.loss = nn.MSELoss()
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
+        x, y = batch['frames'], batch['caption']
 
         out_student = self.student(x)
         out_teacher = self.teacher(x)
@@ -446,7 +453,7 @@ class DistillationTrainer(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
+        x, y = batch['frames'], batch['caption']
 
         out_student = self.student(x)
         out_teacher = self.teacher(x)
