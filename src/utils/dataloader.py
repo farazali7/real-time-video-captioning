@@ -10,7 +10,6 @@ from typing import Dict, Optional, List, Any
 from src.utils.video_handlers import get_video_frames, get_evenly_sampled_frames
 from src.utils.tokenizer import encode_caption
 from transformers import PreTrainedTokenizer
-import time
 
 def image_transform():
     crop_size = 224
@@ -56,7 +55,6 @@ class CaptionDataset(Dataset):
 
     def __getitem__(self, idx):
         # Get video id and its captions
-        s1 = time.time()
         vid_id = self.vid_ids[idx]
         caption_ids = self.data.loc[self.data['image_id'] == vid_id, 'id']
 
@@ -66,24 +64,15 @@ class CaptionDataset(Dataset):
         # Encode the caption
         # encoded_caption = encode_caption(caption, self.tokenizer)
         encoded_caption = self.encoded_caption_data[caption_id]
-        s2 = time.time()
 
-        s3 = time.time()
         # Load video frames into list
         vid_path = os.path.join(self.data_path, vid_id + '.mp4')
         # raw_frames = get_video_frames(vid_path)
         raw_frames = get_evenly_sampled_frames(vid_path, self.num_frames)
-        s4 = time.time()
 
-        s5 = time.time()
         # Sample frames from all frames and transform only those
         raw_frames = raw_frames[torch.arange(0, raw_frames.shape[0], raw_frames.shape[0] // self.num_frames)[:self.num_frames]]
         frames = torch.stack([self.transform(frame) for frame in raw_frames])
-        s6 = time.time()
-
-        first = s2 - s1
-        second = s4-s3
-        third = s6-s5
 
         # frames shape: [N, C, 224, 224], caption shape: [?]
         return {'frames': frames, 'caption': encoded_caption}
