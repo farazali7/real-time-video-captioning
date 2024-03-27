@@ -18,6 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler as DS
 from utils.dataloader import CaptionDataset, collate_fn
 from transformers import BertTokenizer
+import pickle
 
 from config import cfg
 from src.models.model import StudentCandidateV1, GenerativeImageTextTeacher, DistillationTrainer
@@ -97,13 +98,15 @@ if __name__ == "__main__":
     random_state = cfg['SEED']
 
     df = pd.read_csv(cfg['DATA']['CAPTIONS_PATH'])
+    with open(cfg['DATA']['ENCODED_CAPTION_IDS'], 'rb') as f:
+        encoded_caption_data = pickle.load(f)
 
     train_data = df[df['split'] == 'train']
     train_ids = train_data['image_id'].unique().tolist()
     train_data_args = {'data_path': data_path,
                        'vid_ids': train_ids,
                        'data': train_data,
-                       'tokenizer': tokenizer,
+                       'encoded_caption_data': encoded_caption_data,
                        'random_state': random_state}
 
     val_data = df[df['split'] == 'val']
@@ -111,7 +114,7 @@ if __name__ == "__main__":
     val_data_args = {'data_path': data_path,
                      'vid_ids': val_ids,
                      'data': val_data,
-                     'tokenizer': tokenizer,
+                     'encoded_caption_data': encoded_caption_data,
                      'random_state': random_state}
 
     test_data = df[df['split'] == 'test']
@@ -119,7 +122,7 @@ if __name__ == "__main__":
     test_data_args = {'data_path': data_path,
                       'vid_ids': test_ids,
                       'data': test_data,
-                      'tokenizer': tokenizer,
+                      'encoded_caption_data': encoded_caption_data,
                       'random_state': random_state}
 
     # Model arguments
