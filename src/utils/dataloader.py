@@ -31,7 +31,8 @@ def image_transform():
 
 class CaptionDataset(Dataset):
     def __init__(self, data_path: str, vid_ids: List[str], data: pd.DataFrame,
-                 tokenizer: PreTrainedTokenizer, transform: Optional = None, random_state: Optional = None):
+                 tokenizer: PreTrainedTokenizer, transform: Optional = None,
+                 num_frames: int = 10, random_state: Optional = None):
         """Dataset for loading videos with respective captions as ground-truth labels.
 
         Args:
@@ -40,6 +41,7 @@ class CaptionDataset(Dataset):
             data: DataFrame matching captions to video ids
             tokenizer: Tokenizer for GT captions
             transform: Transformations to apply to videos
+            num_frames: Number of frames to keep
             random_state: Integer for seeding caption selection
         """
         self.data_path = data_path
@@ -47,6 +49,7 @@ class CaptionDataset(Dataset):
         self.data = data
         self.tokenizer = tokenizer
         self.transform = transform if transform else image_transform()
+        self.num_frames = num_frames
         self.random_state = random_state
 
     def __len__(self):
@@ -68,8 +71,7 @@ class CaptionDataset(Dataset):
         frames = torch.stack([self.transform(frame) for frame in get_video_frames(vid_path)])
 
         # Sample n frames from video to use
-        # TODO: Make this more sophisticated before training
-        frames = frames[torch.arange(0, frames.shape[0], 5)[:16]]
+        frames = frames[torch.arange(0, frames.shape[0], frames.shape[0] // self.num_frames)[:self.num_frames]]
 
         # frames shape: [N, C, 224, 224], caption shape: [?]
         return {'frames': frames, 'caption': encoded_caption}
