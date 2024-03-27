@@ -25,7 +25,7 @@ cfg = {
             'max_epochs': 100,
             'precision': 16,
             'enable_checkpointing': True,
-            'strategy': 'ddp_find_unused_parameters_true'
+            'strategy': 'auto'
         },
         'LR': 1e-5,
         'BATCH_SIZE': 2,
@@ -34,7 +34,7 @@ cfg = {
         # STUDENT MODELS
         'StudentCandidateV1': {
             'image_enc_name': 'tiny_vit_21m_224.dist_in22k_ft_in1k',
-            'd_model': 512,
+            'd_model': 576,
             'n_head': 8,
             'd_ffn': 1024,
             'dropout': 0.2,
@@ -42,7 +42,8 @@ cfg = {
         },
         # TEACHER MODELS
         'GenerativeImageTextTeacher': {
-            'param_path': 'data/teacher_configs/GIT_LARGE_MSRVTT/parameter.yaml'
+            'param_path': 'data/teacher_configs/GIT_LARGE_MSRVTT/parameter.yaml',
+            'pretrained_weights': 'results/model.pt'
         }
     },
     'WANDB': {
