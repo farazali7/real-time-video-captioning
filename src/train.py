@@ -57,7 +57,7 @@ def train(train_data_args: Dict, val_data_args: Dict,
 
     # Create datasets and dataloaders
     train_dataset = CaptionDataset(**train_data_args)
-    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=1,
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0,
                           collate_fn=collate_fn)
 
     val_dataset = CaptionDataset(**val_data_args)
@@ -77,7 +77,7 @@ def train(train_data_args: Dict, val_data_args: Dict,
     # logger = TensorBoardLogger(**log_args)
 
     # Instantiate the PyTorch Lightning Trainer
-    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger)
+    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger, num_sanity_val_steps=0)
 
     # Fit the model
     trainer.fit(model=distillation_model, train_dataloaders=train_dl, val_dataloaders=val_dl)
@@ -123,8 +123,12 @@ if __name__ == "__main__":
                       'random_state': random_state}
 
     # Model arguments
+    vocab_length = len(tokenizer.vocab)
     student_model_def = train_args['STUDENT_MODEL_DEF']
     student_model_args = cfg['MODEL'][student_model_def]
+    student_model_args['vocab_length'] = vocab_length
+    student_model_args['cls_token_id'] = tokenizer.cls_token_id
+    student_model_args['sep_token_id'] = tokenizer.sep_token_id
 
     teacher_model_def = train_args['TEACHER_MODEL_DEF']
     teacher_model_args = cfg['MODEL'][teacher_model_def]
