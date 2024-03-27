@@ -5,7 +5,7 @@ numpy==1.24.4
 matplotlib==3.7.5
 transformers==4.35.0
 einops==0.7.0
-lightning==2.1.1
+lightning
 opencv-python==4.8.1.78
 omegaconf===2.3.0
 wandb==0.16.0
@@ -14,7 +14,7 @@ torchxrayvision==1.2.1
 azfuse @ git+https://github.com/microsoft/azfuse.git
 boto3==1.34.47
 evaluate==0.4.0
-aac-metrics==0.5.3
+aac-metrics
 pytorch-lightning==2.1.1
 git+https://github.com/microsoft/GenerativeImage2Text.git
 timm==0.9.16
