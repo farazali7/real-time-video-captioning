@@ -7,7 +7,7 @@ cfg = {
     'SEED': 5,
     'DATA': {
         'VIDEOS_PATH': 'data/MSRVTT/videos/all',
-        'CAPTIONS_PATH': 'data/MSRVTT/labels.csv',
+        'CAPTIONS_PATH': 'data/labels/labels.csv',
     },
     'CALLBACK': {
         'dirpath': 'results/',
