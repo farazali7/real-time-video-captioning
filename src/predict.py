@@ -7,6 +7,8 @@ from generativeimage2text.inference import get_image_transform
 from transformers import BertTokenizer
 import logging
 
+from config import cfg
+
 
 def perform_inference(model, prefix, param, img_path):
     if isinstance(img_path, str):
@@ -41,17 +43,16 @@ def perform_inference(model, prefix, param, img_path):
 
 if __name__ == "__main__":
     model_path = 'results/model.pt'
-    model_name = 'GIT_LARGE_MSRVTT'
     ckpt = torch.load(model_path)
     ckpt = ckpt['model']
 
-    param = load_from_yaml_file(f'GenerativeImage2Text/aux_data/models/{model_name}/parameter.yaml')
+    param = load_from_yaml_file(cfg['MODEL']['GenerativeImageTextTeacher']['param_path'])
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     model = get_git_model(tokenizer, param)
     model.eval()
     load_state_dict(model, ckpt)
 
-    img_path = 'GenerativeImage2Text/aux_data/images/2.jpg'
+    img_path = 'data/test.png'
     perform_inference(model, '', param, img_path)
 
     print('Done')

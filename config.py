@@ -4,12 +4,10 @@ CONFIGURATION SETTINGS FOR PROJECT
 import torch
 
 cfg = {
+    'SEED': 5,
     'DATA': {
-        'TRAIN_PATH': 'data/train_videos',
-        'VAL_PATH': 'data/test_videos',
-        'TRAIN_IDS': 'data/train_ids.txt',
-        'VAL_IDS': 'data/test_ids.txt',
-        'CAPTIONS_PATH': 'data/labels.csv',
+        'VIDEOS_PATH': 'data/MSRVTT/videos/all',
+        'CAPTIONS_PATH': 'data/labels/labels.csv',
     },
     'CALLBACK': {
         'dirpath': 'results/',
@@ -21,22 +19,34 @@ cfg = {
         'name': 'captions'
     },
     'TRAIN': {
-        'model_def': 'StudentCandidate',
+        'STUDENT_MODEL_DEF': 'StudentCandidateV1',
+        'TEACHER_MODEL_DEF': 'GenerativeImageTextTeacher',
         'TRAINER': {
             'max_epochs': 100,
             'precision': 16,
             'enable_checkpointing': True,
-            'accelerator': 'gpu',
-            'devices': int(torch.cuda.device_count()),
-            'strategy': 'ddp_find_unused_parameters_true'
+            'strategy': 'auto'
         },
         'LR': 1e-5,
-        'BATCH_SIZE': 16,
+        'BATCH_SIZE': 2,
     },
     'MODEL': {
-        'StudentCandidate': {},
+        # STUDENT MODELS
+        'StudentCandidateV1': {
+            'image_enc_name': 'tiny_vit_21m_224.dist_in22k_ft_in1k',
+            'd_model': 576,
+            'n_head': 8,
+            'd_ffn': 1024,
+            'dropout': 0.2,
+            'num_decoder_layers': 4
+        },
+        # TEACHER MODELS
+        'GenerativeImageTextTeacher': {
+            'param_path': 'data/teacher_configs/GIT_LARGE_MSRVTT/parameter.yaml',
+            'pretrained_weights': 'results/model.pt'
+        }
     },
     'WANDB': {
-        "MODE": 'online'  # One of {'online', 'offline', 'disabled'}
+        "MODE": 'disabled'  # One of {'online', 'offline', 'disabled'}
     }
 }

@@ -1,18 +1,19 @@
 from typing import List, Optional, Union
 
-#NLTK is standard and comes with python as standard library
+# NLTK is standard and comes with python as standard library
 from nltk.translate.bleu_score import corpus_bleu,sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from nltk import word_tokenize
 import nltk
 nltk.download('wordnet')
+nltk.download('punkt')
 
-#Evaluate also has all BLEU and METEOR scores if standard nltk doesn't work, right now used for Rouge-L
+# Evaluate also has all BLEU and METEOR scores if standard nltk doesn't work, right now used for Rouge-L
 import evaluate
 
-#aac-metrics is a package that has the CIDEr-D score
-from aac_metrics.functional import cider_d
-from aac_metrics.utils.tokenization import preprocess_mono_sents, preprocess_mult_sents
+# aac-metrics is a package that has the CIDEr-D score
+# from aac_metrics.functional import cider_d
+# from aac_metrics.utils.tokenization import preprocess_mono_sents, preprocess_mult_sents
 import subprocess
 
 
