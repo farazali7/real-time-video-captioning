@@ -16,7 +16,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler as DS
-from utils.dataloader import CaptionDataset, collate_fn
+from src.utils.dataloader import CaptionDataset, collate_fn
 from transformers import BertTokenizer
 
 from config import cfg
