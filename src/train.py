@@ -58,7 +58,7 @@ def train(train_data_args: Dict, val_data_args: Dict,
 
     # Create datasets and dataloaders
     train_dataset = CaptionDataset(**train_data_args)
-    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=15,
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4,
                           collate_fn=collate_fn)
 
     val_dataset = CaptionDataset(**val_data_args)
@@ -73,13 +73,11 @@ def train(train_data_args: Dict, val_data_args: Dict,
     callback = ModelCheckpoint(**callback_args)
 
     # log gradients and model topology
-    # wandb_logger.watch(model)
     logger = wandb_logger
     # logger = TensorBoardLogger(**log_args)
 
     # Instantiate the PyTorch Lightning Trainer
-    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger, num_sanity_val_steps=0)
-
+    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger, num_sanity_val_steps=1)
     # Fit the model
     trainer.fit(model=distillation_model, train_dataloaders=train_dl, val_dataloaders=val_dl)
 

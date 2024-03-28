@@ -629,9 +629,13 @@ class DistillationTrainer(L.LightningModule):
         # LOSS 2: Compute a loss between output logits of teacher and student
         # Student logits shape: [B, GT_length, vocab]
         # Teacher logits shape: [B, GT_length, vocab]
+        temperature=5
         teacher_logits = torch.cat(out_teacher, dim=0)
         student_logits = out_student[-1]
-        kl_loss = self.kl_div_loss(student_logits.log_softmax(dim=-1), teacher_logits.softmax(dim=-1))
+        teacher_logits_kl=teacher_logits/temperature
+        student_logits_kl=student_logits/temperature
+        kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
+        kl_loss=kl_loss*(temperature ** 2)
 
         # LOSS 3: Compute loss between output of student and GT
         y_target = y[:, 1:].reshape(-1)

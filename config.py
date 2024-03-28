@@ -48,6 +48,6 @@ cfg = {
         }
     },
     'WANDB': {
-        "MODE": 'disabled'  # One of {'online', 'offline', 'disabled'}
+        "MODE": 'online'  # One of {'online', 'offline', 'disabled'}
     }
 }
