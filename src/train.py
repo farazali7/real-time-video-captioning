@@ -16,7 +16,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import TensorBoardLogger
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler as DS
-from utils.dataloader import CaptionDataset, collate_fn
+from .utils.dataloader import CaptionDataset, collate_fn
 from transformers import BertTokenizer
 import pickle
 
@@ -58,11 +58,11 @@ def train(train_data_args: Dict, val_data_args: Dict,
 
     # Create datasets and dataloaders
     train_dataset = CaptionDataset(**train_data_args)
-    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0,
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=15,
                           collate_fn=collate_fn)
 
     val_dataset = CaptionDataset(**val_data_args)
-    val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0,
+    val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4,
                         collate_fn=collate_fn)
 
     # Instantiate the student and teacher models and pass to Lightning module

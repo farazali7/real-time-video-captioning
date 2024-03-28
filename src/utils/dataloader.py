@@ -11,13 +11,17 @@ from src.utils.video_handlers import get_video_frames, get_evenly_sampled_frames
 from src.utils.tokenizer import encode_caption
 from transformers import PreTrainedTokenizer
 
+class BGR2RGBTransform:
+    def __call__(self, x):
+        return x[[2, 1, 0], ...]
+
 def image_transform():
     crop_size = 224
     trans = [
         ToTensor(),
         Resize(crop_size, interpolation=Image.BICUBIC),
         CenterCrop(crop_size),
-        lambda image: image[[2, 1, 0], ...],  # BGR -> RGB
+        BGR2RGBTransform(),  # BGR -> RGB
         Normalize(
             (0.48145466, 0.4578275, 0.40821073),
             (0.26862954, 0.26130258, 0.27577711),
