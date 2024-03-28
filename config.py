@@ -8,6 +8,7 @@ cfg = {
     'DATA': {
         'VIDEOS_PATH': 'data/MSRVTT/videos/all',
         'CAPTIONS_PATH': 'data/labels/labels.csv',
+        'ENCODED_CAPTION_IDS': 'data/labels/encoded_captions.pkl'
     },
     'CALLBACK': {
         'dirpath': 'results/',
