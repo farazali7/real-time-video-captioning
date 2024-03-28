@@ -16,6 +16,7 @@ import numpy as np
 from src.utils.masking import create_padding_mask, create_casual_mask
 import src.metrics as metrics
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TinyVIT(nn.Module):
     def __init__(self, model_name: str):
@@ -85,8 +86,8 @@ class StudentCandidateV1(nn.Module):
         memory = torch.mean(image_enc_fmaps[-1], dim=[2, 3]).view(init_shape[0], init_shape[1], -1)
 
         # Create padding and causal masks for captions
-        pad_mask = create_padding_mask(y)
-        tgt_mask = create_casual_mask(y.shape[1])
+        pad_mask = create_padding_mask(y).to(device)
+        tgt_mask = create_casual_mask(y.shape[1]).to(device)
         tgt_embed = self.embed(y)
         tgt_embed = self.pos_enc(tgt_embed)
         tgt_embed = tgt_embed / torch.sqrt(torch.tensor(self.embed.embedding_dim))
@@ -100,7 +101,7 @@ class StudentCandidateV1(nn.Module):
         self.decoder.eval()
         batch_size = src.size(0)
         # tgt Shape: [B, 1]
-        tgt = torch.tensor([self.cls_token_id]*batch_size, dtype=torch.long).unsqueeze(1)
+        tgt = torch.tensor([self.cls_token_id]*batch_size, dtype=torch.long).unsqueeze(1).to(device)
         for i in range(max_len):
             with torch.no_grad():
                 output = self.forward(src, tgt)[-1]

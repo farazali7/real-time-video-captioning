@@ -18,7 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler as DS
 from src.utils.dataloader import CaptionDataset, collate_fn
 from transformers import BertTokenizer
-
+import pickle
 from config import cfg
 from src.models.model import StudentCandidateV1, GenerativeImageTextTeacher, DistillationTrainer
 from lightning.pytorch.loggers import WandbLogger
@@ -57,11 +57,11 @@ def train(train_data_args: Dict, val_data_args: Dict,
 
     # Create datasets and dataloaders
     train_dataset = CaptionDataset(**train_data_args)
-    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0,
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=15,
                           collate_fn=collate_fn)
 
     val_dataset = CaptionDataset(**val_data_args)
-    val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=0,
+    val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4,
                         collate_fn=collate_fn)
 
     # Instantiate the student and teacher models and pass to Lightning module
@@ -97,13 +97,15 @@ if __name__ == "__main__":
     random_state = cfg['SEED']
 
     df = pd.read_csv(cfg['DATA']['CAPTIONS_PATH'])
+    with open(cfg['DATA']['ENCODED_CAPTION_IDS'], 'rb') as f:
+        encoded_caption_data = pickle.load(f)
 
     train_data = df[df['split'] == 'train']
     train_ids = train_data['image_id'].unique().tolist()
     train_data_args = {'data_path': data_path,
                        'vid_ids': train_ids,
                        'data': train_data,
-                       'tokenizer': tokenizer,
+                       'encoded_caption_data': encoded_caption_data,
                        'random_state': random_state}
 
     val_data = df[df['split'] == 'val']
@@ -111,7 +113,7 @@ if __name__ == "__main__":
     val_data_args = {'data_path': data_path,
                      'vid_ids': val_ids,
                      'data': val_data,
-                     'tokenizer': tokenizer,
+                     'encoded_caption_data': encoded_caption_data,
                      'random_state': random_state}
 
     test_data = df[df['split'] == 'test']
@@ -119,7 +121,7 @@ if __name__ == "__main__":
     test_data_args = {'data_path': data_path,
                       'vid_ids': test_ids,
                       'data': test_data,
-                      'tokenizer': tokenizer,
+                      'encoded_caption_data': encoded_caption_data,
                       'random_state': random_state}
 
     # Model arguments
