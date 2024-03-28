@@ -1,0 +1,52 @@
+{
+    "os": "Windows-10-10.0.22631-SP0",
+    "python": "3.11.8",
+    "heartbeatAt": "2024-03-28T18:10:34.691111",
+    "startedAt": "2024-03-28T18:10:33.683233",
+    "docker": null,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "-m src.train",
+    "codePathLocal": null,
+    "git": {
+        "remote": "git@github.com:farazali7/real-time-video-captioning.git",
+        "commit": "52a63cef1c4e3d5044a777aea03367ac27fb5e5f"
+    },
+    "email": "paanugoban@gmail.com",
+    "root": "C:/Users/paanu/Documents/Git_Project/real-time-video-captioning",
+    "host": "Paan-PC",
+    "username": "paanu",
+    "executable": "C:\\Users\\paanu\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\\python.exe",
+    "cpu_count": 16,
+    "cpu_count_logical": 24,
+    "cpu_freq": {
+        "current": 3400.0,
+        "min": 0.0,
+        "max": 3400.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3400.0,
+            "min": 0.0,
+            "max": 3400.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 951.6455039978027,
+            "used": 597.409496307373
+        }
+    },
+    "gpu": "NVIDIA GeForce RTX 4080",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 4080",
+            "memory_total": 17171480576
+        }
+    ],
+    "memory": {
+        "total": 31.69979476928711
+    }
+}

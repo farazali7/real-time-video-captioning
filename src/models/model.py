@@ -629,7 +629,7 @@ class DistillationTrainer(L.LightningModule):
         # LOSS 2: Compute a loss between output logits of teacher and student
         # Student logits shape: [B, GT_length, vocab]
         # Teacher logits shape: [B, GT_length, vocab]
-        temperature=5
+        temperature=2
         teacher_logits = torch.cat(out_teacher, dim=0)
         student_logits = out_student[-1]
         teacher_logits_kl=teacher_logits/temperature
@@ -666,11 +666,17 @@ class DistillationTrainer(L.LightningModule):
         # Add BLEU for student
         caps = [[c] for c in caps]
         loss = metrics.calculate_bleu_score_corpus(caps, preds)
+        add_loss=metrics.calculate_meteor_score_corpus(caps, preds)
+        rouge_loss=metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
         print(f'Student Predictions: {preds}')
         print(f'BLEU@4: {loss}')
+        print(f'METEOR: {add_loss}')
+        print(f'ROUGE: {rouge_loss}')
 
         self.log("val_loss", loss, prog_bar=True)
+
+
 
         return loss
 
