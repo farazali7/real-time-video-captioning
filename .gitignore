@@ -5,6 +5,7 @@ results/
 results/.gitkeep
 output/
 !output/.gitkeep
+wandb/
 
 
 # Byte-compiled / optimized / DLL files
