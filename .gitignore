@@ -4,6 +4,7 @@ data/
 results/
 results/.gitkeep
 output/
+!output/.gitkeep
 
 
 # Byte-compiled / optimized / DLL files
