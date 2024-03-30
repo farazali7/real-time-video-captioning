@@ -12,6 +12,8 @@ from torch.nn import functional as F
 import timm
 import lightning as L
 import numpy as np
+import torchvision.transforms.functional as TF
+import hashlib
 
 from src.utils.masking import create_padding_mask, create_casual_mask
 import src.metrics as metrics
@@ -57,6 +59,7 @@ class StudentCandidateV1(nn.Module):
         """
         super(StudentCandidateV1, self).__init__()
         self.image_encoder = TinyVIT(image_enc_name)
+        self.n_head=n_head
         self.decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=n_head,
                                                         dim_feedforward=d_ffn, dropout=dropout,
                                                         batch_first=True)
@@ -75,6 +78,7 @@ class StudentCandidateV1(nn.Module):
     def forward(self, x, y):
         # x shape: [B, F, C, H, W]
         # Combine frames axis with batch to get shape: [BxF, C, H, W]
+        # Check if the model is in training mode
         init_shape = x.shape
         x = x.view(init_shape[0] * init_shape[1], *init_shape[2:])
 
@@ -84,7 +88,6 @@ class StudentCandidateV1(nn.Module):
 
         # Take last feature map, average spatially, and restore frames as token length [B, F, De]
         memory = torch.mean(image_enc_fmaps[-1], dim=[2, 3]).view(init_shape[0], init_shape[1], -1)
-
         # Create padding and causal masks for captions
         pad_mask = create_padding_mask(y).to(device)
         tgt_mask = create_casual_mask(y.shape[1]).to(device)
@@ -99,6 +102,7 @@ class StudentCandidateV1(nn.Module):
 
     def greedy_decode(self, src: torch.Tensor, max_len: int = 20):
         self.decoder.eval()
+        self.training=False
         batch_size = src.size(0)
         # tgt Shape: [B, 1]
         tgt = torch.tensor([self.cls_token_id]*batch_size, dtype=torch.long).unsqueeze(1).to(device)
@@ -112,8 +116,84 @@ class StudentCandidateV1(nn.Module):
                 break
 
         return tgt
+    
+    def beam_search(self, src: torch.Tensor, max_len: int = 20, k: int = 5):
+        self.decoder.eval()
+        batch_size = src.size(0)
+        # Initialize the start tokens
+        tgt = torch.full((batch_size, 1), self.cls_token_id, dtype=torch.long).to(device)
 
+        # Store scores for each sentence
+        scores = torch.zeros(batch_size, k).to(device)
+        # Initialize the sequences for each beam
+        sequences = tgt.unsqueeze(1).expand(-1, k, -1)
+        all_candidates = torch.empty(batch_size, k*k, 3, device=device)
 
+        # For the first step, process only the start token
+        with torch.no_grad():
+            decoder_output = self.forward(src, tgt)  # Get initial output
+            log_probs = F.log_softmax(decoder_output[-1][:, -1, :], dim=-1)
+            scores, top_indices = log_probs.topk(k, dim=-1)
+        #Turn it to batch x k x2
+        sequences = torch.cat([sequences, top_indices.unsqueeze(-1)], dim=-1)
+
+        # Start beam search loop
+        for step in range(2, max_len):
+            for i in range(k):
+                tgt = sequences[:, i]
+                with torch.no_grad():
+                    decoder_output = self.forward(src, tgt)
+                    log_probs = F.log_softmax(decoder_output[-1][:, -1, :], dim=-1)
+                    top_scores, top_indices = log_probs.topk(k, dim=-1) #BxK
+                local_scores = scores[:, i].unsqueeze(-1) + top_scores #Bx1 + BxK
+                #print("local_scores",local_scores.shape)
+                offset = i * k
+                all_candidates[:, offset:offset+k, 0] = local_scores
+                all_candidates[:, offset:offset+k, 1] = i
+                all_candidates[:, offset:offset+k, 2] = top_indices
+                #print("all_candidates",all_candidates.shape)
+
+            scores_to_sort = all_candidates[:,:,0].view(batch_size, -1)  # Shape: [batch_size, k*k]
+            #print("scores_to_sort",scores_to_sort.shape)
+            sorted_scores, sorted_indices = scores_to_sort.sort(dim=1, descending=True)
+            #print("scorted_scores",sorted_scores.shape)
+            #print("scorted_indices",sorted_indices.shape)
+            # Now, use sorted_indices to select top k candidates
+            topk_indices = sorted_indices[:, :k]  # Get indices of top k scores for each batch
+            #print("topk_indices",topk_indices.shape)
+            # Initialize the new sequences tensor for this step
+            new_sequences = torch.zeros(batch_size, k, step + 1, dtype=torch.long, device=device)
+            #print("new_sequences",new_sequences.shape)
+            # Extracting the beam indices and token indices from all_candidates using topk_indices
+            for b in range(batch_size):
+                for idx in range(k):
+                    # Get the global index from topk_indices, which points to the flat structure of all_candidates
+                    global_idx = topk_indices[b, idx]
+                    #print("global_idx",global_idx)
+                    
+                    # Extract the beam index and token index for the current top candidate
+                    beam_idx = all_candidates[b, global_idx, 1].long()  # Ensure it's used as an index
+                    #print("beam_idx",beam_idx)
+                    token_idx = all_candidates[b, global_idx, 2].long()
+                    #print("token_idx",token_idx)
+                    
+                    # Update the new_sequences tensor
+                    new_sequences[b, idx, :-1] = sequences[b, beam_idx, :]  # Copy the previous sequence from selected beam
+                    #print("new_sequences",new_sequences.shape)
+                    new_sequences[b, idx, -1] = token_idx  # Append the new token
+                    #print("new_sequences",new_sequences.shape)
+                    
+                    # Update the score for this candidate
+                    scores[b, idx] = all_candidates[b, global_idx, 0]  # Update score with the new score
+                    #print("scores",scores.shape)
+
+            sequences=new_sequences
+
+        # Choose the sequence with the highest score
+        final_sequences = sequences[torch.arange(batch_size), scores.argmax(dim=-1)]
+        #print("final_sequences",final_sequences.shape)
+        return final_sequences
+    
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len=500):
         super(PositionalEncoding, self).__init__()
@@ -558,11 +638,11 @@ class GenerativeImageTextTeacher(nn.Module):
 
                 # Get the distribution of logits for each beam for each of the predicted n words
                 # Shape: [n, 4, v] where n = number of words, 4 = number of beams, v = vocab length
-                beam_logits_distributions = torch.from_numpy(np.array(result['logits_dict'][:n]))
+                beam_logits_distributions = torch.from_numpy(np.array(result['logits_dict'][:n])).to(device)
 
                 # Get the actual predicted word tokens (indices) and change shape to have same no. of dimensions
                 # as the logit distribution tensors, Shape: [n, 4, 1]
-                word_tokens = result['predictions'][0, 1:n+1]
+                word_tokens = result['predictions'][0, 1:n+1].to(device)
                 word_tokens = word_tokens[:, None, None].expand(-1, 4, -1)
 
                 # Get indices of the beam in each word that has the highest logit at the
@@ -605,33 +685,61 @@ class DistillationTrainer(L.LightningModule):
         for i, block_idx in enumerate(self.wanted_block_indices):
             self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i))
 
+        self.teacher_results = torch.load('teacher_results.pth', map_location='cpu')
+        self.teacher_results_val=torch.load('teacher_results_val.pth', map_location='cpu')
+        self.artificial_pad = torch.full((1, 1, len(self.teacher.tokenizer.vocab)), float('-inf'))
+        self.artificial_pad[:, :, 102] = 0
+
+    
     def training_step(self, batch, batch_idx):
         self.teacher.eval()
 
-        x, y = batch['frames'], batch['caption']
+        x, y, caption_id= batch['frames'], batch['caption'], batch['caption-id']
 
         out_student = self.student(x, y)
-        out_teacher = self.teacher.forward_output_logits(x, y)
+        #out_teacher = self.teacher.forward_output_logits(x, y)
+        out_teacher_list=[]
+        teacher_fmaps_list = [[] for _ in range(4)]
+        for i in caption_id:
+            out_teacher_list.append(self.teacher_results[int(i)][0])
+            for j, tensor in enumerate(self.teacher_results[int(i)][1]):
+                teacher_fmaps_list[j].append(tensor)
+        
+        teacher_fmaps = [torch.cat(tensor_list, dim=0) for tensor_list in teacher_fmaps_list]
 
         # LOSS 1: Get feature maps and match and compute loss
         # Student activations
         student_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in out_student[:-1]]
-
+        
         # Teacher activations (get cls token)
-        teacher_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_activations.values()]
+        #teacher_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_activations.values()]
 
         # Project student fmaps to teacher dimensionality
         student_fmaps = [self.student.projectors[i](fmap) for i, fmap in enumerate(student_fmaps)]
 
         # Compute feature map distillation loss
-        fmap_loss = self.fmap_distill_loss(torch.stack(teacher_fmaps), torch.stack(student_fmaps))
+        fmap_loss = self.fmap_distill_loss(torch.stack(teacher_fmaps).to(device), torch.stack(student_fmaps).to(device))
 
         # LOSS 2: Compute a loss between output logits of teacher and student
         # Student logits shape: [B, GT_length, vocab]
         # Teacher logits shape: [B, GT_length, vocab]
-        temperature=2
-        teacher_logits = torch.cat(out_teacher, dim=0)
+
+        for i in range(0,len(out_teacher_list)):
+            if out_teacher_list[i].shape[1]>out_student[-1].shape[1]:
+                out_teacher_list[i]=out_teacher_list[i][:,0:out_student[-1].shape[1],:]
+            elif out_teacher_list[i].shape[1]<out_student[-1].shape[1]:
+                 # Calculate how much padding is needed
+                pad_size = out_student[-1].shape[1] - out_teacher_list[i].shape[1]
+                # Extract the last value of the sequence
+                last_val = self.artificial_pad
+                # Repeat the last value pad_size times and concatenate it
+                pad = last_val.repeat(1, pad_size, 1)
+                out_teacher_list[i] = torch.cat([out_teacher_list[i], pad], dim=1)
+
+        temperature=1
+        teacher_logits = torch.cat(out_teacher_list, dim=0).to(device)
         student_logits = out_student[-1]
+
         teacher_logits_kl=teacher_logits/temperature
         student_logits_kl=student_logits/temperature
         kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
@@ -657,11 +765,18 @@ class DistillationTrainer(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch['frames'], batch['caption']
+        x, y, caption_id= batch['frames'], batch['caption'],batch['caption-id']
 
         out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
+        out_student_1=self.student.beam_search(x, max_len=y.shape[-1]+5)
+
         preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student]
+        preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
         caps = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in y]
+        #out_teacher=self.teacher(x)
+        teacher_captions=[]
+        for i in range(0,len(y)):
+            teacher_captions.append(self.teacher_results_val[int(caption_id[i])])
 
         # Add BLEU for student
         caps = [[c] for c in caps]
@@ -669,15 +784,17 @@ class DistillationTrainer(L.LightningModule):
         add_loss=metrics.calculate_meteor_score_corpus(caps, preds)
         rouge_loss=metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
+        print(f'Teacher Captions: {teacher_captions}')
         print(f'Student Predictions: {preds}')
+        print(f'Student Predictions Beam: {preds_1}')
         print(f'BLEU@4: {loss}')
         print(f'METEOR: {add_loss}')
         print(f'ROUGE: {rouge_loss}')
 
         self.log("val_loss", loss, prog_bar=True)
 
-
-
+        del self.teacher_activations
+        self.teacher_activations = {}
         return loss
 
     def configure_optimizers(self):
@@ -686,6 +803,7 @@ class DistillationTrainer(L.LightningModule):
                                                                   patience=4,
                                                                   min_lr=1e-8,
                                                                   factor=0.5)
+        
 
         return [optimizer], [{"scheduler": lr_scheduler, "interval": "epoch", "monitor": "val_loss"}]
 

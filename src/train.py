@@ -77,7 +77,7 @@ def train(train_data_args: Dict, val_data_args: Dict,
     # logger = TensorBoardLogger(**log_args)
 
     # Instantiate the PyTorch Lightning Trainer
-    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger, num_sanity_val_steps=1)
+    trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger, num_sanity_val_steps=0)
     # Fit the model
     trainer.fit(model=distillation_model, train_dataloaders=train_dl, val_dataloaders=val_dl)
 
