@@ -68,7 +68,7 @@ def train(train_data_args: Dict, val_data_args: Dict,
     # Instantiate the student and teacher models and pass to Lightning module
     student_model = StudentCandidateV1(**student_model_args)
     teacher_model = GenerativeImageTextTeacher(**teacher_model_args)
-    distillation_model = DistillationTrainer(teacher=teacher_model, student=student_model, lr=lr)
+    distillation_model = DistillationTrainer(teacher=teacher_model, student=student_model, lr=lr,steps=len(train_dl),epochs=trainer_args['max_epochs'])
 
     callback = ModelCheckpoint(**callback_args)
 
