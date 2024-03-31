@@ -34,7 +34,7 @@ def image_transform():
 
 class CaptionDataset(Dataset):
     def __init__(self, data_path: str, vid_ids: List[str], data: pd.DataFrame, encoded_caption_data: Dict,
-                 transform: Optional = None, num_frames: int = 10, random_state: Optional = None):
+                 transform: Optional = None, num_frames: int = 6, random_state: Optional = None):
         """Dataset for loading videos with respective captions as ground-truth labels.
 
         Args:

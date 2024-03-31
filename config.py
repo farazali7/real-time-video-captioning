@@ -23,7 +23,7 @@ cfg = {
         'STUDENT_MODEL_DEF': 'StudentCandidateV1',
         'TEACHER_MODEL_DEF': 'GenerativeImageTextTeacher',
         'TRAINER': {
-            'max_epochs': 10,
+            'max_epochs': 30,
             'precision': 16,
             'enable_checkpointing': True,
             'strategy': 'auto'
