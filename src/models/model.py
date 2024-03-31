@@ -1,4 +1,4 @@
-import torch
+import torch, uuid, os
 import torch.nn as nn
 from generativeimage2text.layers.decoder import CaptioningModel, BeamHypotheses, top_k_top_p_filtering, \
     GeneratorWithBeamSearch
@@ -14,9 +14,12 @@ import lightning as L
 import numpy as np
 import torchvision.transforms.functional as TF
 import hashlib
+from torch.optim.lr_scheduler import OneCycleLR
+import time
 
 from src.utils.masking import create_padding_mask, create_casual_mask
 import src.metrics as metrics
+from config import cfg
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,7 +35,6 @@ class TinyVIT(nn.Module):
 
     def forward(self, x):
         out = self.model(x)
-
         return out
 
 
@@ -248,7 +250,8 @@ class GenerativeImageTextModel(CaptioningModel):
         # shape: (batch_size, max_caption_length, vocab_size)
         if 'image' in batch:
             if isinstance(batch['image'], (list, tuple)):
-                features = [self.image_encoder(im) for im in batch['image']]
+                #features = [self.image_encoder(im) for im in batch['image']]
+                features = self.image_encoder(torch.stack(batch['image']).squeeze())
                 if self.num_image_with_embedding:
                     features = [f + e for f, e in zip(features, self.img_temperal_embedding)]
                 if self.pooling_images is None:
@@ -282,7 +285,6 @@ class GenerativeImageTextModel(CaptioningModel):
         #else:
         caption_token_input = batch["caption_tokens"]
         #caption_lengths = batch["caption_lengths"]
-
         output_logits = self.textual(
             visual_features,
             caption_token_input,
@@ -663,7 +665,7 @@ class DistillationTrainer(L.LightningModule):
     PyTorch Lightning module for knowledge distillation training
     """
 
-    def __init__(self, teacher, student, lr):
+    def __init__(self, teacher, student, lr,steps,epochs):
         """ Constructor.
 
         Args:
@@ -678,18 +680,31 @@ class DistillationTrainer(L.LightningModule):
         self.fmap_distill_loss = nn.MSELoss()
         self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)  # Ignore the padding from the dataloader
-
+        self.ce_loss2 = nn.CrossEntropyLoss(ignore_index=0)  # Ignore the padding from the dataloader
+        self.steps=steps
+        self.epochs=epochs
         self.teacher_activations = {}
+        self.dirpath = os.path.join(os.getcwd(), "results", "run")
+        self.filename = f"results_{uuid.uuid4()}.txt"
+        os.makedirs(self.dirpath, exist_ok=True)
         # Create hooks for teacher feature/attention maps we want
         self.wanted_block_indices = torch.arange(0, 23, 6)
         for i, block_idx in enumerate(self.wanted_block_indices):
             self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i))
 
-        self.teacher_results = torch.load('teacher_results.pth', map_location='cpu')
-        self.teacher_results_val=torch.load('teacher_results_val.pth', map_location='cpu')
-        self.artificial_pad = torch.full((1, 1, len(self.teacher.tokenizer.vocab)), float('-inf'))
-        self.artificial_pad[:, :, 102] = 0
-
+        # Log configuration parameters
+        with open(self.dirpath + '/' + self.filename, 'a') as f:
+            f.write(f"Results for the run: {self.filename}")
+            f.write("\n************************************\n")
+            f.write("\n"*3)
+            f.write(f"Teacher model: {teacher.__class__.__name__}\n")
+            f.write(f"Student model: {student.__class__.__name__}\n")
+            f.write("\n"*3)
+            f.write("Parameters:\n")
+            f.write(f"Learning Rate: {cfg['TRAIN']['LR']}\n")
+            f.write(f"Number of epochs: {cfg['TRAIN']['TRAINER']['max_epochs']}\n")
+            f.write(f"Batch size: {cfg['TRAIN']['BATCH_SIZE']}\n")
+            f.write(f"Precision: {cfg['TRAIN']['TRAINER']['precision']}\n")
     
     def training_step(self, batch, batch_idx):
         self.teacher.eval()
@@ -697,25 +712,28 @@ class DistillationTrainer(L.LightningModule):
         x, y, caption_id= batch['frames'], batch['caption'], batch['caption-id']
 
         out_student = self.student(x, y)
-        #out_teacher = self.teacher.forward_output_logits(x, y)
-        out_teacher_list=[]
+        out_teacher = self.teacher.forward_output_logits(x, y)
+        '''out_teacher_list=[]
         teacher_fmaps_list = [[] for _ in range(4)]
         for i in caption_id:
             out_teacher_list.append(self.teacher_results[int(i)][0])
             for j, tensor in enumerate(self.teacher_results[int(i)][1]):
-                teacher_fmaps_list[j].append(tensor)
+                teacher_fmaps_list[j].append(tensor)'''
         
-        teacher_fmaps = [torch.cat(tensor_list, dim=0) for tensor_list in teacher_fmaps_list]
+        #teacher_fmaps = [torch.cat(tensor_list, dim=0) for tensor_list in teacher_fmaps_list]
 
         # LOSS 1: Get feature maps and match and compute loss
         # Student activations
         student_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in out_student[:-1]]
         
         # Teacher activations (get cls token)
-        #teacher_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_activations.values()]
+        teacher_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_activations.values()]
+        teacher_fmaps = [fmap.reshape(-1, 1024) for fmap in teacher_fmaps]
+
 
         # Project student fmaps to teacher dimensionality
         student_fmaps = [self.student.projectors[i](fmap) for i, fmap in enumerate(student_fmaps)]
+
 
         # Compute feature map distillation loss
         fmap_loss = self.fmap_distill_loss(torch.stack(teacher_fmaps).to(device), torch.stack(student_fmaps).to(device))
@@ -724,7 +742,7 @@ class DistillationTrainer(L.LightningModule):
         # Student logits shape: [B, GT_length, vocab]
         # Teacher logits shape: [B, GT_length, vocab]
 
-        for i in range(0,len(out_teacher_list)):
+        '''for i in range(0,len(out_teacher_list)):
             if out_teacher_list[i].shape[1]>out_student[-1].shape[1]:
                 out_teacher_list[i]=out_teacher_list[i][:,0:out_student[-1].shape[1],:]
             elif out_teacher_list[i].shape[1]<out_student[-1].shape[1]:
@@ -734,10 +752,10 @@ class DistillationTrainer(L.LightningModule):
                 last_val = self.artificial_pad
                 # Repeat the last value pad_size times and concatenate it
                 pad = last_val.repeat(1, pad_size, 1)
-                out_teacher_list[i] = torch.cat([out_teacher_list[i], pad], dim=1)
+                out_teacher_list[i] = torch.cat([out_teacher_list[i], pad], dim=1)'''
 
         temperature=1
-        teacher_logits = torch.cat(out_teacher_list, dim=0).to(device)
+        teacher_logits = torch.cat(out_teacher, dim=0).to(device)
         student_logits = out_student[-1]
 
         teacher_logits_kl=teacher_logits/temperature
@@ -758,6 +776,15 @@ class DistillationTrainer(L.LightningModule):
         self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
+        with open(self.dirpath + '/' + self.filename, 'a') as f:
+            f.write("\n"*3)
+            f.write("Training Results\n")
+            f.write(f'Epoch: {self.current_epoch}\n')
+            f.write(f'Feature Map Distillation Loss: {fmap_loss}\n')
+            f.write(f'Cross-Entropy Loss: {ce_loss}\n')
+            f.write(f'KL-Divergence Loss: {kl_loss}\n')
+            f.write(f'Total Loss: {loss}\n')
+
         # Clear the teacher activations for this batch
         del self.teacher_activations
         self.teacher_activations = {}
@@ -773,23 +800,35 @@ class DistillationTrainer(L.LightningModule):
         preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student]
         preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
         caps = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in y]
-        #out_teacher=self.teacher(x)
+        out_teacher=self.teacher(x)
         teacher_captions=[]
         for i in range(0,len(y)):
-            teacher_captions.append(self.teacher_results_val[int(caption_id[i])])
+            teacher_captions.append(out_teacher[i]['cap'])
 
         # Add BLEU for student
         caps = [[c] for c in caps]
         loss = metrics.calculate_bleu_score_corpus(caps, preds)
-        #add_loss=metrics.calculate_meteor_score_corpus(caps, preds)
-        #rouge_loss=metrics.calculate_rouge_score(caps, preds)
+        add_loss=metrics.calculate_meteor_score_corpus(caps, preds)
+        rouge_loss=metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
         print(f'Teacher Captions: {teacher_captions}')
         print(f'Student Predictions: {preds}')
         print(f'Student Predictions Beam: {preds_1}')
         print(f'BLEU@4: {loss}')
-        #print(f'METEOR: {add_loss}')
-        #print(f'ROUGE: {rouge_loss}')
+        print(f'METEOR: {add_loss}')
+        print(f'ROUGE: {rouge_loss}')
+
+        with open(self.dirpath + '/' + self.filename, 'a') as f:
+            f.write("\n"*3)
+            f.write("Validation Results\n")
+            f.write(f'Epoch: {self.current_epoch}\n')
+            f.write(f'Ground-Truth Captions: {caps}\n')
+            f.write(f'Teacher Captions: {teacher_captions}\n')
+            f.write(f'Student Predictions: {preds}\n')
+            f.write(f'Student Predictions Beam: {preds_1}\n')
+            f.write(f'BLEU@4: {loss}\n')
+            f.write(f'METEOR: {add_loss}\n')
+            f.write(f'ROUGE: {rouge_loss}\n')
 
         self.log("val_loss", loss, prog_bar=True)
 
@@ -803,6 +842,9 @@ class DistillationTrainer(L.LightningModule):
                                                                   patience=4,
                                                                   min_lr=1e-8,
                                                                   factor=0.5)
+        #total_steps = self.epochs * self.steps
+
+        #scheduler = OneCycleLR(optimizer, max_lr=0.01, total_steps=total_steps)
         
 
         return [optimizer], [{"scheduler": lr_scheduler, "interval": "epoch", "monitor": "val_loss"}]
