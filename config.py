@@ -12,7 +12,7 @@ cfg = {
     },
     'CALLBACK': {
         'dirpath': 'results/',
-        'filename': 'model-last.ckpt',
+        'filename': 'model-last-{epoch:02d}',
         'save_top_k': -1,
         'monitor': 'val_loss',
         'mode': 'min',
