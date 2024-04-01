@@ -2,11 +2,12 @@
 data/
 !data/.gitkeep
 results/
-results/.gitkeep
-results/run/.gitkeep
+!results/.gitkeep
+!results/run/.gitkeep
 output/
 !output/.gitkeep
 wandb/
+!wandb/.gitkeep
 
 
 # Byte-compiled / optimized / DLL files
