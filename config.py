@@ -12,10 +12,10 @@ cfg = {
     },
     'CALLBACK': {
         'dirpath': 'results/',
-        'filename': 'model-last-{epoch:02d}',
-        'save_top_k': -1,
-        'monitor': 'val_loss',
-        'mode': 'min',
+        'filename': 'model-{epoch:02d}',
+        'save_top_k': 2,
+        'monitor': 'epoch',
+        'mode': 'max',
     },
     'LOGGER': {
         'save_dir': 'results/',
