@@ -7,10 +7,13 @@ from torch.utils.data.dataloader import default_collate
 from torchvision.transforms import Resize, CenterCrop, ToTensor, Normalize, Compose, ToPILImage
 from PIL import Image
 from typing import Dict, Optional, List, Any
-from src.utils.video_handlers import get_video_frames
+from src.utils.video_handlers import get_video_frames, get_evenly_sampled_frames
 from src.utils.tokenizer import encode_caption
 from transformers import PreTrainedTokenizer
 
+class BGR2RGBTransform:
+    def __call__(self, x):
+        return x[[2, 1, 0], ...]
 
 def image_transform():
     crop_size = 224
@@ -18,7 +21,7 @@ def image_transform():
         ToTensor(),
         Resize(crop_size, interpolation=Image.BICUBIC),
         CenterCrop(crop_size),
-        lambda image: image[[2, 1, 0], ...],  # BGR -> RGB
+        BGR2RGBTransform(),  # BGR -> RGB
         Normalize(
             (0.48145466, 0.4578275, 0.40821073),
             (0.26862954, 0.26130258, 0.27577711),
@@ -30,16 +33,15 @@ def image_transform():
 
 
 class CaptionDataset(Dataset):
-    def __init__(self, data_path: str, vid_ids: List[str], data: pd.DataFrame,
-                 tokenizer: PreTrainedTokenizer, transform: Optional = None,
-                 num_frames: int = 10, random_state: Optional = None):
+    def __init__(self, data_path: str, vid_ids: List[str], data: pd.DataFrame, encoded_caption_data: Dict,
+                 transform: Optional[Any] = None, num_frames: int = 10, random_state: Optional[Any] = None):
         """Dataset for loading videos with respective captions as ground-truth labels.
 
         Args:
             data_path: String, path to videos
             vid_ids: List of video ids (each are a data point)
             data: DataFrame matching captions to video ids
-            tokenizer: Tokenizer for GT captions
+            encoded_caption_data: Dictionary containing tokenizer/encoded captions
             transform: Transformations to apply to videos
             num_frames: Number of frames to keep
             random_state: Integer for seeding caption selection
@@ -47,10 +49,10 @@ class CaptionDataset(Dataset):
         self.data_path = data_path
         self.vid_ids = vid_ids
         self.data = data
-        self.tokenizer = tokenizer
         self.transform = transform if transform else image_transform()
         self.num_frames = num_frames
         self.random_state = random_state
+        self.encoded_caption_data = encoded_caption_data
 
     def __len__(self):
         return len(self.vid_ids)
@@ -58,23 +60,26 @@ class CaptionDataset(Dataset):
     def __getitem__(self, idx):
         # Get video id and its captions
         vid_id = self.vid_ids[idx]
-        captions = self.data.loc[self.data['image_id'] == vid_id, 'caption']
+        caption_ids = self.data.loc[self.data['image_id'] == vid_id, 'id']
 
         # Select a random caption to use as label
-        caption = captions.sample(n=1, random_state=self.random_state).iloc[0]
+        caption_id = caption_ids.sample(n=1, random_state=self.random_state).iloc[0]
 
         # Encode the caption
-        encoded_caption = encode_caption(caption, self.tokenizer)
+        # encoded_caption = encode_caption(caption, self.tokenizer)
+        encoded_caption = self.encoded_caption_data[caption_id]
 
         # Load video frames into list
         vid_path = os.path.join(self.data_path, vid_id + '.mp4')
-        frames = torch.stack([self.transform(frame) for frame in get_video_frames(vid_path)])
+        # raw_frames = get_video_frames(vid_path)
+        raw_frames = get_evenly_sampled_frames(vid_path, self.num_frames)
 
-        # Sample n frames from video to use
-        frames = frames[torch.arange(0, frames.shape[0], frames.shape[0] // self.num_frames)[:self.num_frames]]
+        # Sample frames from all frames and transform only those
+        raw_frames = raw_frames[torch.arange(0, raw_frames.shape[0], raw_frames.shape[0] // self.num_frames)[:self.num_frames]]
+        frames = torch.stack([self.transform(frame) for frame in raw_frames])
 
         # frames shape: [N, C, 224, 224], caption shape: [?]
-        return {'frames': frames, 'caption': encoded_caption}
+        return {'frames': frames, 'caption': encoded_caption,'caption-id':caption_id}
 
 
 def collate_fn(batch: Any):

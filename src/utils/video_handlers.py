@@ -35,6 +35,75 @@ def get_video_frames(video_path: str) -> np.ndarray:
     return np.array(frames)
 
 
+def get_evenly_sampled_frames(video_path: str, num_frames: int) -> np.ndarray:
+    """
+    Get Video Frames evenly sampled across entire video:
+    - Read video from the given path.
+    - Return the frames of the video as a numpy array.
+    - Simply reads the video and returns the frames as a numpy array.
+    - Quick if there is no need to alter the frames.
+    Args:
+    - video_path: str: Path to the video file.
+    - num_frames: Total number of frames to sample
+    Returns:
+    - frames: np.ndarray: Frames of the video.
+
+    Example:
+    >>> video_path = "path/to/video.mp4"
+    >>> frames = get_video_frames(video_path)
+    >>> frames.shape
+    (num_frames, height, width, 3)
+    """
+    video = cv2.VideoCapture(video_path)
+    frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+    indices = np.arange(0, frame_count, frame_count // num_frames, dtype=np.int32)[:num_frames]
+    frames = []
+
+    for i in range(indices[-1]+1):
+        if i in indices:
+            ret, frame = video.read()
+            if not ret:
+                break
+            frames.append(frame)
+        else:
+            ret = video.grab()
+            if not ret:
+                break
+
+    return np.array(frames)
+
+def get_evenly_sampled_frames2(video_path: str, num_frames: int) -> np.ndarray:
+    """
+    Get Video Frames evenly sampled across entire video:
+    - Read video from the given path.
+    - Return the frames of the video as a numpy array.
+    - Simply reads the video and returns the frames as a numpy array.
+    - Quick if there is no need to alter the frames.
+    Args:
+    - video_path: str: Path to the video file.
+    - num_frames: Total number of frames to sample
+    Returns:
+    - frames: np.ndarray: Frames of the video.
+
+    Example:
+    >>> video_path = "path/to/video.mp4"
+    >>> frames = get_video_frames(video_path)
+    >>> frames.shape
+    (num_frames, height, width, 3)
+    """
+    video = cv2.VideoCapture(video_path)
+    frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+    indices = np.arange(0, frame_count, frame_count // num_frames, dtype=np.int32)[:num_frames]
+    frames = []
+
+    for idx in indices:
+        video.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        res, frame = video.read()
+        frames.append(frame)
+
+    return np.array(frames)
+
+
 def get_video_frames_with_resize(video_path: str, width_resize_ratio: float, height_resize_ratio: float) -> np.ndarray:
     """
     Get Video Frames with Resize:

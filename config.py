@@ -8,11 +8,14 @@ cfg = {
     'DATA': {
         'VIDEOS_PATH': 'data/MSRVTT/videos/all',
         'CAPTIONS_PATH': 'data/labels/labels.csv',
+        'ENCODED_CAPTION_IDS': 'data/labels/encoded_captions.pkl'
     },
     'CALLBACK': {
         'dirpath': 'results/',
+        'filename': 'model-{epoch:02d}',
         'save_top_k': 2,
-        'monitor': 'val_loss'
+        'monitor': 'epoch',
+        'mode': 'max',
     },
     'LOGGER': {
         'save_dir': 'results/',
@@ -22,13 +25,13 @@ cfg = {
         'STUDENT_MODEL_DEF': 'StudentCandidateV1',
         'TEACHER_MODEL_DEF': 'GenerativeImageTextTeacher',
         'TRAINER': {
-            'max_epochs': 100,
+            'max_epochs': 30,
             'precision': 16,
             'enable_checkpointing': True,
             'strategy': 'auto'
         },
-        'LR': 1e-5,
-        'BATCH_SIZE': 2,
+        'LR': 1e-4,
+        'BATCH_SIZE': 8,
     },
     'MODEL': {
         # STUDENT MODELS
@@ -37,7 +40,7 @@ cfg = {
             'd_model': 576,
             'n_head': 8,
             'd_ffn': 1024,
-            'dropout': 0.2,
+            'dropout': 0.3,
             'num_decoder_layers': 4
         },
         # TEACHER MODELS
@@ -47,6 +50,6 @@ cfg = {
         }
     },
     'WANDB': {
-        "MODE": 'disabled'  # One of {'online', 'offline', 'disabled'}
+        "MODE": 'online'  # One of {'online', 'offline', 'disabled'}
     }
 }
