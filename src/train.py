@@ -70,6 +70,12 @@ def train(train_data_args: Dict, val_data_args: Dict,
     teacher_model = GenerativeImageTextTeacher(**teacher_model_args)
     distillation_model = DistillationTrainer(teacher=teacher_model, student=student_model, lr=lr,steps=len(train_dl),epochs=trainer_args['max_epochs'])
 
+    log_file = distillation_model.dirpath + '/' + distillation_model.filename
+
+    with open(log_file, 'a') as f:
+        f.write('\n' * 2)
+        f.write('WANDB Experiment Name: ' + wandb_logger.experiment.name + '\n')
+
     callback = ModelCheckpoint(**callback_args)
 
     # log gradients and model topology
