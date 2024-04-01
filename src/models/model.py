@@ -12,10 +12,6 @@ from torch.nn import functional as F
 import timm
 import lightning as L
 import numpy as np
-import torchvision.transforms.functional as TF
-import hashlib
-from torch.optim.lr_scheduler import OneCycleLR
-import time
 
 from src.utils.masking import create_padding_mask, create_casual_mask
 import src.metrics as metrics
@@ -694,12 +690,15 @@ class DistillationTrainer(L.LightningModule):
 
         # Log configuration parameters
         with open(self.dirpath + '/' + self.filename, 'a') as f:
-            f.write(f"Results for the run: {self.filename}")
-            f.write("\n************************************\n")
-            f.write("\n"*3)
-            f.write(f"Teacher model: {teacher.__class__.__name__}\n")
+            f.write(f'Results for the run: {self.filename}\n')
+            f.write('\n************************************\n')
+            f.write("\n" * 2)
+            f.write(f'Teacher model: {teacher.__class__.__name__}\n')
+            f.write(f"Teacher model configuration: {cfg['MODEL']['GenerativeImageTextTeacher']}\n")
+            f.write('\n' * 2)
             f.write(f"Student model: {student.__class__.__name__}\n")
-            f.write("\n"*3)
+            f.write(f"Student model configuration: {cfg['MODEL']['StudentCandidateV1']}\n")
+            f.write("\n" * 2)
             f.write("Parameters:\n")
             f.write(f"Learning Rate: {cfg['TRAIN']['LR']}\n")
             f.write(f"Number of epochs: {cfg['TRAIN']['TRAINER']['max_epochs']}\n")
@@ -776,15 +775,6 @@ class DistillationTrainer(L.LightningModule):
         self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
-        with open(self.dirpath + '/' + self.filename, 'a') as f:
-            f.write("\n"*3)
-            f.write("Training Results\n")
-            f.write(f'Epoch: {self.current_epoch}\n')
-            f.write(f'Feature Map Distillation Loss: {fmap_loss}\n')
-            f.write(f'Cross-Entropy Loss: {ce_loss}\n')
-            f.write(f'KL-Divergence Loss: {kl_loss}\n')
-            f.write(f'Total Loss: {loss}\n')
-
         # Clear the teacher activations for this batch
         del self.teacher_activations
         self.teacher_activations = {}
@@ -819,7 +809,7 @@ class DistillationTrainer(L.LightningModule):
         print(f'ROUGE: {rouge_loss}')
 
         with open(self.dirpath + '/' + self.filename, 'a') as f:
-            f.write("\n"*3)
+            f.write("\n" * 2)
             f.write("Validation Results\n")
             f.write(f'Epoch: {self.current_epoch}\n')
             f.write(f'Ground-Truth Captions: {caps}\n')
