@@ -8,7 +8,7 @@ output/
 !output/.gitkeep
 wandb/
 !wandb/.gitkeep
-
+generativeimage2text/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
