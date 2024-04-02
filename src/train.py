@@ -35,7 +35,7 @@ def plot_loss(loss_array):
     plt.show()
 
 
-def train(train_data_args: Dict, val_data_args: Dict,
+def train(train_data_args: Dict, val_data_args: Dict,test_data_args: Dict,
           student_model_args: Dict, teacher_model_args: Dict,
           callback_args: Dict, trainer_args: Dict, batch_size: int, lr: float):
     """ Training function for knowledge distillation experiments
@@ -64,6 +64,10 @@ def train(train_data_args: Dict, val_data_args: Dict,
     val_dataset = CaptionDataset(**val_data_args)
     val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4,
                         collate_fn=collate_fn)
+    
+    test_dataset = CaptionDataset(**test_data_args)
+    test_dl = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4,
+                        collate_fn=collate_fn)
 
     # Instantiate the student and teacher models and pass to Lightning module
     student_model = StudentCandidateV1(**student_model_args)
@@ -86,7 +90,7 @@ def train(train_data_args: Dict, val_data_args: Dict,
     trainer = L.Trainer(**trainer_args, callbacks=callback, logger=logger, num_sanity_val_steps=0)
     # Fit the model
     trainer.fit(model=distillation_model, train_dataloaders=train_dl, val_dataloaders=val_dl)
-
+    #trainer.test(model=distillation_model, dataloaders=test_dl)
     wandb_logger.experiment.unwatch(distillation_model)
 
     return distillation_model
@@ -155,5 +159,5 @@ if __name__ == "__main__":
     lr = train_args['LR']
 
     # Train the model
-    train(train_data_args, val_data_args, student_model_args, teacher_model_args,
+    train(train_data_args, val_data_args, test_data_args, student_model_args, teacher_model_args,
           callback_args, trainer_args, batch_size, lr)
