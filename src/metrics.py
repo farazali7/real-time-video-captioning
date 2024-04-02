@@ -1,21 +1,36 @@
 from typing import List, Optional, Union
-
-# NLTK is standard and comes with python as standard library
+from pycocotools.coco import COCO
+from pycocoevalcap.eval import COCOEvalCap
+import json
+from json import encoder
+encoder.FLOAT_REPR = lambda o: format(o, '.3f')
+import sys
+import uuid
 from nltk.translate.bleu_score import corpus_bleu,sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from nltk import word_tokenize
 import nltk
-#nltk.download('wordnet')
-#nltk.download('punkt')
-
-# Evaluate also has all BLEU and METEOR scores if standard nltk doesn't work, right now used for Rouge-L
+import subprocess
 import evaluate
 
-# aac-metrics is a package that has the CIDEr-D score
-# from aac_metrics.functional import cider_d
-# from aac_metrics.utils.tokenization import preprocess_mono_sents, preprocess_mult_sents
-import subprocess
-
+def calculate_score(outputs:List[dict],set:str):
+    resFile='./results/run/validation_preds.json'
+    with open('./results/run/validation_preds.json', 'w') as f:
+        json.dump(outputs, f)
+        
+    annFile = './data/MSRVTT/annotations/MSR_VTT.json'
+    coco = COCO(annFile)
+        
+    cocoRes = coco.loadRes(resFile)
+    cocoEval = COCOEvalCap(coco, cocoRes)
+    cocoEval.params['image_id'] = cocoRes.getImgIds()
+    cocoEval.evaluate()
+    out = {}
+    for metric, score in cocoEval.eval.items():
+        out[metric] = score*100
+        print(f"{metric}: {score*100}")
+    json.dump(out, open(f'./results/run/{set}_results_{uuid.uuid4()}.json', 'w'))
+    
 
 def calculate_bleu_score_corpus(references:List[List[str]], candidates:List[str])->float:
     """Calculate the BLEU-4 score for a corpus of sentences, that is multiple candidates.
@@ -45,6 +60,47 @@ def calculate_bleu_score_corpus(references:List[List[str]], candidates:List[str]
     #https://www.nltk.org/api/nltk.translate.bleu_score.html
     return corpus_bleu(references, candidates)*100
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'''from typing import List, Optional, Union
+
+# NLTK is standard and comes with python as standard library
+from nltk.translate.bleu_score import corpus_bleu,sentence_bleu
+from nltk.translate.meteor_score import meteor_score
+from nltk import word_tokenize
+import nltk
+#nltk.download('wordnet')
+#nltk.download('punkt')
+
+# Evaluate also has all BLEU and METEOR scores if standard nltk doesn't work, right now used for Rouge-L
+import evaluate
+
+# aac-metrics is a package that has the CIDEr-D score
+# from aac_metrics.functional import cider_d
+# from aac_metrics.utils.tokenization import preprocess_mono_sents, preprocess_mult_sents
+import subprocess
 
 def calculate_bleu_score_sentence(reference:Union[str,List[str]], candidate:Union[str,List[str]])->float:
     """This function calculates the BLEU-4 score for a single image caption prediction
@@ -149,7 +205,7 @@ def calculate_rouge_score(references:List[List[str]], candidates:List[str])->flo
     return rouge.compute(predictions=candidates, references=references)['rougeL']*100
 
 
-'''
+
 def calculate_cider_d_score(references:List[List[str]], candidates:List[str])->object:
     """This function calculates the CIDEr-D score for a corpus of sentences, that is multiple candidates. If you need one caption, just pass a list with one element.
 

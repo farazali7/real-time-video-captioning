@@ -854,6 +854,9 @@ class DistillationTrainer(L.LightningModule):
         for i, block_idx in enumerate(self.wanted_block_indices):
             self.teacher_hooks.append(self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i)))
 
+        #To store the predictions for analysis
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
         # Log configuration parameters
         with open(self.dirpath + '/' + self.filename, 'a') as f:
             f.write(f'Results for the run: {self.filename}\n')
@@ -875,7 +878,7 @@ class DistillationTrainer(L.LightningModule):
         #We ensure the teacher is in eval mode
         self.teacher.eval()
         #We grab from the dataloader the frames, caption and if needed caption-id to uniquely identify the caption used
-        x, y, caption_id= batch['frames'], batch['caption'], batch['caption-id']
+        x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
         
         #We call the student forward function in two parts which outputs our encoder feature maps, output logits, final encoder representation
         image_enc_fmaps ,memory=self.student.forward_image_enc(x)
@@ -959,7 +962,7 @@ class DistillationTrainer(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, caption_id = batch['frames'], batch['caption'], batch['caption-id']
+        x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
         #We are performing both decoders to see which has better performance
         out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
         out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
@@ -978,16 +981,13 @@ class DistillationTrainer(L.LightningModule):
         # Add BLEU for student
         caps = [[c] for c in caps]
 
-        loss = metrics.calculate_bleu_score_corpus(caps, preds)
-        add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
-        rouge_loss = metrics.calculate_rouge_score(caps, preds)
+        loss = metrics.calculate_bleu_score_corpus(caps, teacher_captions)
+        #add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
+        #rouge_loss = metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
         print(f'Teacher Captions: {teacher_captions}')
         print(f'Student Predictions: {preds}')
         print(f'Student Predictions Beam: {preds_1}')
-        print(f'BLEU@4: {loss}')
-        print(f'METEOR: {add_loss}')
-        print(f'ROUGE: {rouge_loss}')
 
         with open(self.dirpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
@@ -997,18 +997,28 @@ class DistillationTrainer(L.LightningModule):
             f.write(f'Teacher Captions: {teacher_captions}\n')
             f.write(f'Student Predictions: {preds}\n')
             f.write(f'Student Predictions Beam: {preds_1}\n')
-            f.write(f'BLEU@4: {loss}\n')
-            f.write(f'METEOR: {add_loss}\n')
-            f.write(f'ROUGE: {rouge_loss}\n')
-
+        
         self.log("val_loss", loss, prog_bar=True)
 
+        for i in range(0,len(teacher_captions)):
+            self.validation_step_outputs.append({
+            "image_id": str(vid_id[i]),  # Make sure this is just an integer, not a tensor
+            "caption": teacher_captions[i]
+        })
+            
         del self.teacher_activations
         self.teacher_activations = {}
+    
+        # Optionally, you can save the results to a file here, or you can return them and collect them in `validation_epoch_end`
         return loss
     
+    def on_validation_epoch_end(self):
+        #We call metrics which has a function to calculate BLEU-4, Rouge, Cider, and Meteor
+        metrics.calculate_score(self.validation_step_outputs,"val")
+        self.validation_step_outputs.clear()
+
     def test_step(self, batch, batch_idx):
-        x, y, caption_id = batch['frames'], batch['caption'], batch['caption-id']
+        x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
         #We are performing both decoders to see which has better performance
         out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
         out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
@@ -1027,16 +1037,13 @@ class DistillationTrainer(L.LightningModule):
         # Add BLEU for student
         caps = [[c] for c in caps]
         
-        loss = metrics.calculate_bleu_score_corpus(caps, preds)
-        add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
-        rouge_loss = metrics.calculate_rouge_score(caps, preds)
+        loss = metrics.calculate_bleu_score_corpus(caps, teacher_captions)
+        #add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
+        #rouge_loss = metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
         print(f'Teacher Captions: {teacher_captions}')
         print(f'Student Predictions: {preds}')
         print(f'Student Predictions Beam: {preds_1}')
-        print(f'BLEU@4: {loss}')
-        print(f'METEOR: {add_loss}')
-        print(f'ROUGE: {rouge_loss}')
 
         with open(self.dirpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
@@ -1046,15 +1053,23 @@ class DistillationTrainer(L.LightningModule):
             f.write(f'Teacher Captions: {teacher_captions}\n')
             f.write(f'Student Predictions: {preds}\n')
             f.write(f'Student Predictions Beam: {preds_1}\n')
-            f.write(f'BLEU@4: {loss}\n')
-            f.write(f'METEOR: {add_loss}\n')
-            f.write(f'ROUGE: {rouge_loss}\n')
 
         self.log("test_loss", loss, prog_bar=True)
+
+        for i in range(0,len(teacher_captions)):
+            self.test_step_outputs.append({
+            "image_id": str(vid_id[i]),  # Make sure this is just an integer, not a tensor
+            "caption": teacher_captions[i]
+        })
 
         del self.teacher_activations
         self.teacher_activations = {}
         return loss
+    
+    def on_test_epoch_end(self):
+        #We call metrics which has a function to calculate BLEU-4, Rouge, Cider, and Meteor
+        metrics.calculate_score(self.test_step_outputs,"test")
+        self.test_step_outputs.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.student.parameters(), lr=self.lr)

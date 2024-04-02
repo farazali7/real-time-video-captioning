@@ -187,4 +187,5 @@ sandbox.py
 *.webm
 *.vob
 *.ogv
+*.json
 /data/MSRVTT/

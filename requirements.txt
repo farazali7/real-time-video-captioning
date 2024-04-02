@@ -19,4 +19,7 @@ pytorch-lightning==2.1.1
 git+https://github.com/microsoft/GenerativeImage2Text.git
 timm==0.9.16
 nltk==3.8.1
-rouge_score-0.1.2
+rouge_score==0.1.2
+pycocotools==2.0.7
+pycocoevalcap==1.2
+
