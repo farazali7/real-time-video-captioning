@@ -74,6 +74,15 @@ class StudentCandidateV1(nn.Module):
         self.pos_enc = PositionalEncoding(d_model=d_model)
 
     def forward(self, x, y):
+        # Get frame layer-wise feature maps and final visual representation from image encoder
+        image_enc_fmaps, memory = self.forward_image_enc(x)
+
+        # Pass labels and memory through decoder for final textual output
+        out = self.forward_decoder(y, memory)
+
+        return image_enc_fmaps + [out]
+
+    def forward_image_enc(self, x):
         # x shape: [B, F, C, H, W]
         # Combine frames axis with batch to get shape: [BxF, C, H, W]
         # Check if the model is in training mode
@@ -86,6 +95,10 @@ class StudentCandidateV1(nn.Module):
 
         # Take last feature map, average spatially, and restore frames as token length [B, F, De]
         memory = torch.mean(image_enc_fmaps[-1], dim=[2, 3]).view(init_shape[0], init_shape[1], -1)
+
+        return image_enc_fmaps, memory
+
+    def forward_decoder(self, y, memory):
         # Create padding and causal masks for captions
         pad_mask = create_padding_mask(y).to(device)
         tgt_mask = create_casual_mask(y.shape[1]).to(device)
@@ -96,9 +109,14 @@ class StudentCandidateV1(nn.Module):
                            tgt_mask=tgt_mask, tgt_key_padding_mask=pad_mask, tgt_is_causal=True)
         out = self.linear(out)
 
-        return image_enc_fmaps + [out]
+        return out
 
     def greedy_decode(self, src: torch.Tensor, max_len: int = 20):
+        # Get visual representation of frames
+        self.image_encoder.eval()
+        with torch.no_grad():
+            _, memory = self.forward_image_enc(src)
+        
         self.decoder.eval()
         self.training = False
         batch_size = src.size(0)
@@ -106,7 +124,7 @@ class StudentCandidateV1(nn.Module):
         tgt = torch.tensor([self.cls_token_id]*batch_size, dtype=torch.long).unsqueeze(1).to(device)
         for i in range(max_len):
             with torch.no_grad():
-                output = self.forward(src, tgt)[-1]
+                output = self.forward_decoder(tgt, memory)
             output = torch.argmax(output, dim=-1)  # Assuming this gives you [batch_size, current_seq_length]
             last_tokens = output[:, -1].unsqueeze(-1)  # Correctly select the last token for each item in the batch
             tgt = torch.cat((tgt, last_tokens), dim=1)  # Concatenate along the sequence length dimension
@@ -664,8 +682,8 @@ class DistillationTrainer(L.LightningModule):
         self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)  # Ignore the padding from the dataloader
         self.ce_loss2 = nn.CrossEntropyLoss(ignore_index=0)  # Ignore the padding from the dataloader
-        self.steps=steps
-        self.epochs=epochs
+        self.steps = steps
+        self.epochs = epochs
         self.teacher_activations = {}
         self.dirpath = os.path.join(os.getcwd(), "results", "run")
         self.filename = f"results_{uuid.uuid4()}.txt"
@@ -747,10 +765,10 @@ class DistillationTrainer(L.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, caption_id = batch['frames'], batch['caption'],batch['caption-id']
+        x, y, caption_id = batch['frames'], batch['caption'], batch['caption-id']
 
         out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
-        out_student_1=self.student.beam_search(x, max_len=y.shape[-1]+5)
+        out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
 
         preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student]
         preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
@@ -763,8 +781,8 @@ class DistillationTrainer(L.LightningModule):
         # Add BLEU for student
         caps = [[c] for c in caps]
         loss = metrics.calculate_bleu_score_corpus(caps, preds)
-        add_loss=metrics.calculate_meteor_score_corpus(caps, preds)
-        rouge_loss=metrics.calculate_rouge_score(caps, preds)
+        add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
+        rouge_loss = metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
         print(f'Teacher Captions: {teacher_captions}')
         print(f'Student Predictions: {preds}')
