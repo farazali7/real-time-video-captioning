@@ -116,7 +116,7 @@ class StudentCandidateV1(nn.Module):
         self.image_encoder.eval()
         with torch.no_grad():
             _, memory = self.forward_image_enc(src)
-        
+
         self.decoder.eval()
         self.training = False
         batch_size = src.size(0)
@@ -690,8 +690,9 @@ class DistillationTrainer(L.LightningModule):
         os.makedirs(self.dirpath, exist_ok=True)
         # Create hooks for teacher feature/attention maps we want
         self.wanted_block_indices = torch.arange(0, 23, 6)
+        self.teacher_hooks = []
         for i, block_idx in enumerate(self.wanted_block_indices):
-            self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i))
+            self.teacher_hooks.append(self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i)))
 
         # Log configuration parameters
         with open(self.dirpath + '/' + self.filename, 'a') as f:
@@ -826,3 +827,7 @@ class DistillationTrainer(L.LightningModule):
                 self.teacher_activations[name] = [output.detach()]
 
         return hook
+
+    def teardown(self, stage: str) -> None:
+        for h in self.teacher_hooks:
+            h.remove()
