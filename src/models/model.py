@@ -125,7 +125,7 @@ class StudentCandidateV1(nn.Module):
 
         # Take last feature map, average spatially, and restore frames as token length [B, F, De]
         memory = torch.mean(image_enc_fmaps[-1], dim=[2, 3]).view(init_shape[0], init_shape[1], -1)
-
+        #memory=self.transformer_encoder(memory)
         return image_enc_fmaps, memory
 
     def forward_decoder(self, y, memory):
@@ -879,7 +879,8 @@ class DistillationTrainer(L.LightningModule):
         
         #We call the student forward function in two parts which outputs our encoder feature maps, output logits, final encoder representation
         image_enc_fmaps ,memory=self.student.forward_image_enc(x)
-        student_visual_features=self.student.project(memory)
+        spatially_adjusted = F.interpolate(memory.transpose(1, 2), size=self.student.upsample.out_features).transpose(1, 2)
+        student_visual_features=self.student.project(spatially_adjusted)
         #out_student = self.student(x,y)
         out_student = self.student.forward_decoder(y,memory)
         
