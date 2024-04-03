@@ -182,7 +182,7 @@ class StudentCandidateV1(nn.Module):
 
         return tgt
     
-    def beam_search(self, src: torch.Tensor, max_len: int = 20, k: int = 5):
+    def beam_search(self, src: torch.Tensor, max_len: int = 20, k: int = 3):
         '''
             We want to predict with beams our final sequence
         '''
@@ -878,7 +878,7 @@ class DistillationTrainer(L.LightningModule):
         #We ensure the teacher is in eval mode
         self.teacher.eval()
         #We grab from the dataloader the frames, caption and if needed caption-id to uniquely identify the caption used
-        x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
+        x, y, _, _ = batch['frames'], batch['caption'], batch['caption-id'], batch['vid-id']
         
         #We call the student forward function in two parts which outputs our encoder feature maps, output logits, final encoder representation
         image_enc_fmaps ,memory=self.student.forward_image_enc(x)
