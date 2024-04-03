@@ -846,7 +846,9 @@ class DistillationTrainer(L.LightningModule):
         self.teacher_activations = {}
 
         self.dirpath = os.path.join(os.getcwd(), "results", "run")
-        self.filename = f"results_{uuid.uuid4()}.txt"
+        run_uuid = uuid.uuid4()
+        self.run_uuid = run_uuid
+        self.filename = f"results_{run_uuid}.txt"
         os.makedirs(self.dirpath, exist_ok=True)
         # Create hooks for teacher feature/attention maps we want
         self.wanted_block_indices = torch.arange(0, 23, 6)
@@ -1016,7 +1018,7 @@ class DistillationTrainer(L.LightningModule):
     
     def on_validation_epoch_end(self):
         #We call metrics which has a function to calculate BLEU-4, Rouge, Cider, and Meteor
-        metrics.calculate_score(self.validation_step_outputs,"val")
+        metrics.calculate_score(self.validation_step_outputs, self.dirpath + '/' + self.filename, self.run_uuid)
         self.validation_step_outputs.clear()
 
     def test_step(self, batch, batch_idx):

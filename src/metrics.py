@@ -5,7 +5,6 @@ import json
 from json import encoder
 encoder.FLOAT_REPR = lambda o: format(o, '.3f')
 import sys
-import uuid
 from nltk.translate.bleu_score import corpus_bleu,sentence_bleu
 from nltk.translate.meteor_score import meteor_score
 from nltk import word_tokenize
@@ -13,12 +12,16 @@ import nltk
 import subprocess
 import evaluate
 
-def calculate_score(outputs:List[dict],set:str):
-    resFile='./results/run/validation_preds.json'
-    with open('./results/run/validation_preds.json', 'w') as f:
+def calculate_score(outputs: List[dict], filepath: str, uuid: str)->dict:
+    resFile=f'./results/run/validation_preds_{uuid}.json'
+    with open(resFile, 'w') as f:
         json.dump(outputs, f)
+
+    with open(filepath, 'a') as f:
+        f.write("\n\n")
+        f.write(json.dumps(outputs))
         
-    annFile = './data/MSRVTT/annotations/MSR_VTT.json'
+    annFile = './data/MSRVTT/annotation/MSR_VTT.json'
     coco = COCO(annFile)
         
     cocoRes = coco.loadRes(resFile)
@@ -29,7 +32,10 @@ def calculate_score(outputs:List[dict],set:str):
     for metric, score in cocoEval.eval.items():
         out[metric] = score*100
         print(f"{metric}: {score*100}")
-    json.dump(out, open(f'./results/run/{set}_results_{uuid.uuid4()}.json', 'w'))
+
+    with open(filepath, 'a') as f:
+        f.write("\n\n")
+        f.write(json.dumps(out))
     
 
 def calculate_bleu_score_corpus(references:List[List[str]], candidates:List[str])->float:
