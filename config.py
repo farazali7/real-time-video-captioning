@@ -12,8 +12,8 @@ cfg = {
     },
     'CALLBACK': {
         'dirpath': 'results/',
-        'filename': 'model-{epoch:02d}',
-        'save_top_k': 2,
+        'filename': 'model-{wandb_run_id}_{epoch:02d}',
+        'save_top_k': 1,
         'monitor': 'epoch',
         'mode': 'max',
     },

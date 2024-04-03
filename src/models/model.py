@@ -981,14 +981,14 @@ class DistillationTrainer(L.LightningModule):
         # Add BLEU for student
         caps = [[c] for c in caps]
 
-        loss = metrics.calculate_bleu_score_corpus(caps, teacher_captions)
-        # add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
-        # rouge_loss = metrics.calculate_rouge_score(caps, preds)
+        loss = metrics.calculate_bleu_score_corpus(caps, preds)
+        #add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
+        #rouge_loss = metrics.calculate_rouge_score(caps, preds)
         print(f'Ground-Truth Captions: {caps}')
         print(f'Teacher Captions: {teacher_captions}')
         print(f'Student Predictions: {preds}')
         print(f'Student Predictions Beam: {preds_1}')
-        print(f'BLEU-4: {loss}')
+        print(f'BLEU@4: {loss}')
 
         with open(self.dirpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
@@ -998,14 +998,14 @@ class DistillationTrainer(L.LightningModule):
             f.write(f'Teacher Captions: {teacher_captions}\n')
             f.write(f'Student Predictions: {preds}\n')
             f.write(f'Student Predictions Beam: {preds_1}\n')
-            f.write(f'BLEU-4: {loss}\n')
+            f.write(f'BLEU@4: {loss}\n')
         
         self.log("val_loss", loss, prog_bar=True)
 
-        for i in range(0,len(teacher_captions)):
+        for i in range(0,len(preds)):
             self.validation_step_outputs.append({
             "image_id": str(vid_id[i]),  # Make sure this is just an integer, not a tensor
-            "caption": teacher_captions[i]
+            "caption": preds[i]
         })
             
         del self.teacher_activations

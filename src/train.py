@@ -59,7 +59,7 @@ def train(train_data_args: Dict, val_data_args: Dict,test_data_args: Dict,
     # Create datasets and dataloaders
     train_dataset = CaptionDataset(**train_data_args)
     train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4,
-                          collate_fn=collate_fn)
+                          collate_fn=collate_fn, persistent_workers=True)
 
     val_dataset = CaptionDataset(**val_data_args)
     val_dl = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4,
