@@ -823,12 +823,9 @@ class DistillationTrainer(L.LightningModule):
             lr: Learning rate
         """
         super(DistillationTrainer, self).__init__()
-        #We call the student and teacher for both knowedge distillation
         self.teacher = teacher
         self.student = student
-        #This is the learning rate needed by our optimizer
         self.lr = lr
-        #This is for loss 1 
         self.fmap_distill_loss = nn.MSELoss()
         #This is for loss 4
         #self.final_encoding_loss=nn.MSELoss()
@@ -838,28 +835,38 @@ class DistillationTrainer(L.LightningModule):
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)
         #This is for loss 5
         #self.ce_loss2 = nn.CrossEntropyLoss()
-        #These help in case we want to use other learning rate schedulers
         self.steps=steps
         self.epochs=epochs
 
-        #This allows us to store our teacher activations during forward to get teacher logits
-        self.teacher_activations = {}
+        # This is to store the teacher encoder activations
+        self.teacher_encoder_activations = {}
 
+        # This is to store the teacher decoder activations
+        self.teacher_decoder_activations = {}
+
+        # Creating a directory to store the results of the run
         self.dirpath = os.path.join(os.getcwd(), "results", "run")
         run_uuid = uuid.uuid4()
         self.run_uuid = run_uuid
         self.filename = f"results_{run_uuid}.txt"
         os.makedirs(self.dirpath, exist_ok=True)
-        # Create hooks for teacher feature/attention maps we want
-        self.wanted_block_indices = torch.arange(0, 23, 6)
-        self.teacher_hooks = []
-        for i, block_idx in enumerate(self.wanted_block_indices):
-            self.teacher_hooks.append(self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i)))
+
+        # Create hooks to store the activations of the teacher encoder
+        self.encoder_wanted_block_indices = torch.arange(0, 23, 6)
+        self.teacher_encoder_hooks = []
+        for i, block_idx in enumerate(self.encoder_wanted_block_indices):
+            self.teacher_encoder_hooks.append(self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_encoder_activation(i)))
+
+        # Create hooks to store the activations of the teacher decoder
+        self.teacher_decoder_hooks = []
+        for layer_idx in range(6):
+            self.teacher_decoder_hooks.append(self.teacher.model.textual.transformer.encoder.layer[i].output.register_forward_hook(self.get_teacher_decoder_activation(layer_idx)))
 
         #To store the predictions for analysis
         self.validation_step_outputs = []
         self.test_step_outputs = []
-        # Log configuration parameters
+
+        # Log configuration parameters to file
         with open(self.dirpath + '/' + self.filename, 'a') as f:
             f.write(f'Results for the run: {self.filename}\n')
             f.write('\n************************************\n')
@@ -879,29 +886,31 @@ class DistillationTrainer(L.LightningModule):
     def training_step(self, batch, batch_idx):
         #We ensure the teacher is in eval mode
         self.teacher.eval()
+
         #We grab from the dataloader the frames, caption and if needed caption-id to uniquely identify the caption used
         x, y, _, _ = batch['frames'], batch['caption'], batch['caption-id'], batch['vid-id']
         
         #We call the student forward function in two parts which outputs our encoder feature maps, output logits, final encoder representation
-        image_enc_fmaps ,memory=self.student.forward_image_enc(x)
-        spatially_adjusted = F.interpolate(memory.transpose(1, 2), size=self.student.upsample.out_features).transpose(1, 2)
-        student_visual_features=self.student.project(spatially_adjusted)
-        #out_student = self.student(x,y)
-        out_student = self.student.forward_decoder(y,memory)
+        student_image_enc_fmaps, memory = self.student.forward_image_enc(x)
+        spatially_adjusted_student_enc_fmaps = F.interpolate(memory.transpose(1, 2), size=self.student.upsample.out_features).transpose(1, 2)
+        student_visual_features = self.student.project(spatially_adjusted_student_enc_fmaps)
+        # student_decoder_output = self.student(x,y)
+        # Output of the student decoder
+        student_decoder_output = self.student.forward_decoder(y, memory)
         
-        #The teacher outputs the teacher logits, and final encoder visual representations
-        out_teacher,teacher_visual_features = self.teacher.forward_output_logits(x, y)
+        # Output of the teacher model
+        out_teacher, teacher_visual_features = self.teacher.forward_output_logits(x, y)
 
         # LOSS 1: Get feature maps and match and compute loss
         # Student activations
-        student_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in image_enc_fmaps]
+        student_encoder_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in student_image_enc_fmaps]
         # Teacher activations (get cls token)
-        teacher_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_activations.values()]
-        teacher_fmaps = [fmap.reshape(-1, 1024) for fmap in teacher_fmaps]
+        teacher_encoder_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_encoder_activations.values()]
+        teacher_encoder_fmaps = [fmap.reshape(-1, 1024) for fmap in teacher_encoder_fmaps]
         # Project student fmaps to teacher dimensionality
-        student_fmaps = [self.student.projectors[i](fmap) for i, fmap in enumerate(student_fmaps)]
+        student_encoder_fmaps = [self.student.projectors[i](fmap) for i, fmap in enumerate(student_encoder_fmaps)]
         # Compute feature map distillation loss
-        fmap_loss = self.fmap_distill_loss(torch.stack(teacher_fmaps).to(device), torch.stack(student_fmaps).to(device))
+        fmap_loss = self.fmap_distill_loss(torch.stack(teacher_encoder_fmaps).to(device), torch.stack(student_encoder_fmaps).to(device))
 
 
         # LOSS 2: Compute a loss between output logits of teacher and student
@@ -909,8 +918,8 @@ class DistillationTrainer(L.LightningModule):
         # Teacher logits shape: [B, GT_length, vocab]
         temperature = 1
         teacher_logits = torch.cat(out_teacher, dim=0).to(device)
-        student_logits=out_student
-        #student_logits = out_student[-1]
+        student_logits=student_decoder_output
+        #student_logits = student_decoder_output[-1]
         teacher_logits_kl = teacher_logits/temperature
         student_logits_kl = student_logits/temperature
         kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
@@ -958,18 +967,20 @@ class DistillationTrainer(L.LightningModule):
         #self.log("train_enc_loss", final_enc_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         # Clear the teacher activations for this batch
-        del self.teacher_activations
-        self.teacher_activations = {}
+        del self.teacher_encoder_activations
+        del self.teacher_decoder_activations
+        self.teacher_encoder_activations = {}
+        self.teacher_decoder_activations = {}
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
         #We are performing both decoders to see which has better performance
-        out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
+        student_decoder_output = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
         out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
         #Decoding the greedy prediction from student using teacher tokenizer
-        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student]
+        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in student_decoder_output]
         #Decoding the beam prediction from student using teacher tokenizer
         preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
         #Decoding the captions in Ground Truth with tokenizer
@@ -1010,8 +1021,8 @@ class DistillationTrainer(L.LightningModule):
             "caption": preds[i]
         })
             
-        del self.teacher_activations
-        self.teacher_activations = {}
+        del self.teacher_encoder_activations
+        self.teacher_encoder_activations = {}
     
         # Optionally, you can save the results to a file here, or you can return them and collect them in `validation_epoch_end`
         return loss
@@ -1024,10 +1035,10 @@ class DistillationTrainer(L.LightningModule):
     def test_step(self, batch, batch_idx):
         x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
         #We are performing both decoders to see which has better performance
-        out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
+        student_decoder_output = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
         out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
         #Decoding the greedy prediction from student using teacher tokenizer
-        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student]
+        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in student_decoder_output]
         #Decoding the beam prediction from student using teacher tokenizer
         preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
         #Decoding the captions in Ground Truth with tokenizer
@@ -1066,8 +1077,8 @@ class DistillationTrainer(L.LightningModule):
             "caption": teacher_captions[i]
         })
 
-        del self.teacher_activations
-        self.teacher_activations = {}
+        del self.teacher_encoder_activations
+        self.teacher_encoder_activations = {}
         return loss
     
     def on_test_epoch_end(self):
@@ -1086,15 +1097,23 @@ class DistillationTrainer(L.LightningModule):
 
         return [optimizer], [{"scheduler": lr_scheduler, "interval": "epoch", "monitor": "val_loss"}]
 
-    def get_teacher_activation(self, name):
+    def get_teacher_encoder_activation(self, name):
         def hook(model, input, output):
-            if name in self.teacher_activations:
-                self.teacher_activations[name].append(output.detach())
+            if name in self.teacher_encoder_activations:
+                self.teacher_encoder_activations[name].append(output.detach())
             else:
-                self.teacher_activations[name] = [output.detach()]
+                self.teacher_encoder_activations[name] = [output.detach()]
 
+        return hook
+    
+    def get_teacher_decoder_activation(self, layer_idx):
+        def hook(model, input, output):
+            self.teacher_decoder_activations[layer_idx] = output.detach()
         return hook
 
     def teardown(self, stage: str) -> None:
-        for h in self.teacher_hooks:
-            h.remove()
+        for hook in self.teacher_encoder_hooks:
+            hook.remove()
+
+        for hook in self.teacher_decoder_hooks:
+            hook.remove()
