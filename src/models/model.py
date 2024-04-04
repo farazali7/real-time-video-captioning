@@ -844,6 +844,9 @@ class DistillationTrainer(L.LightningModule):
         # This is to store the teacher decoder activations
         self.teacher_decoder_activations = {}
 
+        # This is to store the student decoder activations
+        self.student_decoder_activations = {}
+
         # Creating a directory to store the results of the run
         self.dirpath = os.path.join(os.getcwd(), "results", "run")
         run_uuid = uuid.uuid4()
@@ -861,6 +864,11 @@ class DistillationTrainer(L.LightningModule):
         self.teacher_decoder_hooks = []
         for layer_idx in range(6):
             self.teacher_decoder_hooks.append(self.teacher.model.textual.transformer.encoder.layer[i].output.register_forward_hook(self.get_teacher_decoder_activation(layer_idx)))
+
+        # Create hooks to store the activations of the student decoder
+        self.student_decoder_hooks = []
+        for layer_idx in range(self.student.decoder.num_layers):
+            self.student_decoder_hooks.append(student.decoder.layers[layer_idx].register_forward_hook(self.get_student_decoder_activation(layer_idx)))
 
         #To store the predictions for analysis
         self.validation_step_outputs = []
@@ -966,11 +974,19 @@ class DistillationTrainer(L.LightningModule):
         #self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)
         #self.log("train_enc_loss", final_enc_loss, prog_bar=True, on_step=False, on_epoch=True)
 
+        print("Attention Student")
+        # print the output of the student decoder activations vs the teacher decoder activations
+        print(self.student_decoder_activations[0].shape)
+        print("Attention Teacher")
+        print(self.teacher_decoder_activations[0].shape)
+
         # Clear the teacher activations for this batch
         del self.teacher_encoder_activations
         del self.teacher_decoder_activations
+        del self.student_decoder_activations
         self.teacher_encoder_activations = {}
         self.teacher_decoder_activations = {}
+        self.student_decoder_activations = {}
 
         return loss
 
@@ -1110,10 +1126,18 @@ class DistillationTrainer(L.LightningModule):
         def hook(model, input, output):
             self.teacher_decoder_activations[layer_idx] = output.detach()
         return hook
+    
+    def get_student_decoder_activation(self, layer_idx):
+        def hook(model, input, output):
+            self.student_decoder_activations[layer_idx] = output.detach()
+        return hook
 
     def teardown(self, stage: str) -> None:
         for hook in self.teacher_encoder_hooks:
             hook.remove()
 
         for hook in self.teacher_decoder_hooks:
+            hook.remove()
+
+        for hook in self.student_decoder_hooks:
             hook.remove()
