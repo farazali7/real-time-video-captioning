@@ -94,6 +94,10 @@ class StudentCandidateV1(nn.Module):
         #These linear layers were created to project the final encoding dimension from encoder to match teacher visual features
         self.upsample = nn.LazyLinear(1542)
         self.project = nn.LazyLinear(1024)
+
+        #This is for decoder distillation projection
+        self.project_decoder=nn.LazyLinear(768)
+
         #This is to add positional encoding to the input target of decoder
         self.pos_enc = PositionalEncoding(d_model=d_model)
         #This was to see if adding encoder layers would help given the different images in a video can attend to eachother
@@ -837,13 +841,15 @@ class DistillationTrainer(L.LightningModule):
         #This is for loss 4
         #self.final_encoding_loss=nn.MSELoss()
         #This is for loss 2
-        self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
+        #self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
         #This is for loss 3
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)
         #This is for loss 5
         #self.ce_loss2 = nn.CrossEntropyLoss()
         self.steps=steps
         self.epochs=epochs
+        #This is for loss 6
+        self.decoder_distill_loss=nn.MSELoss()
 
         # This is to store the teacher encoder activations
         self.teacher_encoder_activations = {}
@@ -919,7 +925,7 @@ class DistillationTrainer(L.LightningModule):
         # Optionally, if you have multiple batches and want to concatenate them along the batch dimension
         student_final_activations = torch.cat(stacked_activations, dim=0)
 
-        
+
         # LOSS 1: Get feature maps and match and compute loss
         # Student activations
         student_encoder_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in student_image_enc_fmaps]
@@ -941,8 +947,8 @@ class DistillationTrainer(L.LightningModule):
         #student_logits = student_decoder_output[-1]
         teacher_logits_kl = teacher_logits/temperature
         student_logits_kl = student_logits/temperature
-        kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
-        kl_loss=kl_loss*(temperature ** 2)
+        #kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
+        #kl_loss=kl_loss*(temperature ** 2)
 
 
         # LOSS 3: Compute loss between output of student and GT
@@ -975,19 +981,25 @@ class DistillationTrainer(L.LightningModule):
 
 
         #Loss 6: Decoder Feature Distillation
+        teacher_decoder_distill= teacher_hidden_states[:, [0, 2, 3, 5],1542:, :]
+        B,L,S,E=student_final_activations.shape
+        student_decoder_distill_proj = student_final_activations.view(-1, E)
+        student_decoder_distill=self.student.project_decoder(student_decoder_distill_proj)
+        student_decoder_distill = student_decoder_distill.view(B, L, S, -1)
+        decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
 
-
-        #Our final Loss function currently looks at Loss 1 + Loss 2 + Loss 3
-        loss = ce_loss + kl_loss + fmap_loss
+        #Our final Loss function currently looks at Loss 1 + Loss 6 + Loss 3
+        loss = ce_loss + decoder_loss + fmap_loss
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("train_decoder_loss", decoder_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         #Inactive Loss Functions
         #self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)
         #self.log("train_enc_loss", final_enc_loss, prog_bar=True, on_step=False, on_epoch=True)
+        #self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         # Clear the teacher activations for this batch
         del self.teacher_encoder_activations
