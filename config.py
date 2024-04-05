@@ -31,7 +31,7 @@ cfg = {
             'strategy': 'auto'
         },
         'LR': 1e-4,
-        'BATCH_SIZE': 8,
+        'BATCH_SIZE': 4,
     },
     'MODEL': {
         # STUDENT MODELS

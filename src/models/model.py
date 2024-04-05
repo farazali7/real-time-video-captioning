@@ -412,8 +412,12 @@ class GenerativeImageTextModel(CaptioningModel):
             hidden_valid_mask=visual_features_valid,
             bi_valid_mask_caption=batch.get('bi_valid_mask_caption'),
         )
-
-        return output_logits,visual_features
+        hidden_states=[]
+        for i in output_logits[1]:
+            squeezed_i = i.squeeze(0)
+            hidden_states.append(squeezed_i)
+        hidden_states=torch.stack(hidden_states,dim=0)
+        return output_logits[0],visual_features,hidden_states
 
     def infer(self, batch, visual_features, visual_features_valid, search_param=None):
         batch_size = visual_features.size(0)
@@ -687,6 +691,7 @@ def get_git_model(tokenizer, param):
         mask_future_positions=True,
         padding_idx=0,
         decoder_type='bert_en',
+        output_hidden_states=True,
         visual_projection_type='linearLn',
     )
 
@@ -766,14 +771,16 @@ class GenerativeImageTextTeacher(nn.Module):
         list_of_sequences = [list(i) for i in x]
         out = []
         visual_features=[]
+        hidden_states=[]
         for i, seq in enumerate(list_of_sequences):
             imgs = [i.unsqueeze(0) for i in seq]
             batch = {'image': imgs,
                      'caption_tokens': y[i].unsqueeze(0)}
-            res,visual_feature= self.model.forward_one_custom(batch=batch)
+            res,visual_feature,hidden_state= self.model.forward_one_custom(batch=batch)
             out.append(res)
             visual_features.append(visual_feature)
-        return out, visual_features
+            hidden_states.append(hidden_state)
+        return out, visual_features,hidden_states
 
     def forward(self, x):
         list_of_sequences = [list(i) for i in x]
@@ -841,9 +848,6 @@ class DistillationTrainer(L.LightningModule):
         # This is to store the teacher encoder activations
         self.teacher_encoder_activations = {}
 
-        # This is to store the teacher decoder activations
-        self.teacher_decoder_activations = {}
-
         # This is to store the student decoder activations
         self.student_decoder_activations = {}
 
@@ -859,11 +863,6 @@ class DistillationTrainer(L.LightningModule):
         self.teacher_encoder_hooks = []
         for i, block_idx in enumerate(self.encoder_wanted_block_indices):
             self.teacher_encoder_hooks.append(self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_encoder_activation(i)))
-
-        # Create hooks to store the activations of the teacher decoder
-        self.teacher_decoder_hooks = []
-        for layer_idx in range(6):
-            self.teacher_decoder_hooks.append(self.teacher.model.textual.transformer.encoder.layer[i].output.register_forward_hook(self.get_teacher_decoder_activation(layer_idx)))
 
         # Create hooks to store the activations of the student decoder
         self.student_decoder_hooks = []
@@ -906,9 +905,21 @@ class DistillationTrainer(L.LightningModule):
         # Output of the student decoder
         student_decoder_output = self.student.forward_decoder(y, memory)
         
-        # Output of the teacher model
-        out_teacher, teacher_visual_features = self.teacher.forward_output_logits(x, y)
+        #The teacher outputs the teacher logits, and final encoder visual representations and decoder hidden state representations
+        out_teacher,teacher_visual_features,teacher_hidden_states = self.teacher.forward_output_logits(x, y)
 
+        #All to do feature distillation
+        teacher_hidden_states= torch.stack(teacher_hidden_states,dim=0)
+        stacked_activations = []
+        # Iterate over batches of activations
+        for batch in self.student_decoder_activations.values():
+            # Each `batch` is a list of tensors; directly stack them
+            stacked_batch = torch.stack(batch)  # This stacks along a new dimension, resulting in [Batch, layers, x, y] for each batch
+            stacked_activations.append(stacked_batch)
+        # Optionally, if you have multiple batches and want to concatenate them along the batch dimension
+        student_final_activations = torch.cat(stacked_activations, dim=0)
+
+        
         # LOSS 1: Get feature maps and match and compute loss
         # Student activations
         student_encoder_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in student_image_enc_fmaps]
@@ -962,6 +973,10 @@ class DistillationTrainer(L.LightningModule):
         #Compute the loss
         #ce_loss_2 = self.ce_loss2(student_logits.view(-1, student_logits.size(-1)),out_teacher_inference_targets.view(-1))
 
+
+        #Loss 6: Decoder Feature Distillation
+
+
         #Our final Loss function currently looks at Loss 1 + Loss 2 + Loss 3
         loss = ce_loss + kl_loss + fmap_loss
 
@@ -974,18 +989,10 @@ class DistillationTrainer(L.LightningModule):
         #self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)
         #self.log("train_enc_loss", final_enc_loss, prog_bar=True, on_step=False, on_epoch=True)
 
-        print("Attention Student")
-        # print the output of the student decoder activations vs the teacher decoder activations
-        print(self.student_decoder_activations[0].shape)
-        print("Attention Teacher")
-        print(self.teacher_decoder_activations[0].shape)
-
         # Clear the teacher activations for this batch
         del self.teacher_encoder_activations
-        del self.teacher_decoder_activations
         del self.student_decoder_activations
         self.teacher_encoder_activations = {}
-        self.teacher_decoder_activations = {}
         self.student_decoder_activations = {}
 
         return loss
@@ -1038,7 +1045,9 @@ class DistillationTrainer(L.LightningModule):
         })
             
         del self.teacher_encoder_activations
+        del self.student_decoder_activations
         self.teacher_encoder_activations = {}
+        self.student_decoder_activations = {}
     
         # Optionally, you can save the results to a file here, or you can return them and collect them in `validation_epoch_end`
         return loss
@@ -1094,7 +1103,9 @@ class DistillationTrainer(L.LightningModule):
         })
 
         del self.teacher_encoder_activations
+        del self.student_decoder_activations
         self.teacher_encoder_activations = {}
+        self.student_decoder_activations = {}
         return loss
     
     def on_test_epoch_end(self):
@@ -1122,14 +1133,13 @@ class DistillationTrainer(L.LightningModule):
 
         return hook
     
-    def get_teacher_decoder_activation(self, layer_idx):
+    def get_student_decoder_activation(self, name):
         def hook(model, input, output):
-            self.teacher_decoder_activations[layer_idx] = output.detach()
-        return hook
-    
-    def get_student_decoder_activation(self, layer_idx):
-        def hook(model, input, output):
-            self.student_decoder_activations[layer_idx] = output.detach()
+            if name in self.student_decoder_activations:
+                self.student_decoder_activations[name].append(output.detach())
+            else:
+                self.student_decoder_activations[name] = [output.detach()]
+
         return hook
 
     def teardown(self, stage: str) -> None:
