@@ -857,6 +857,9 @@ class DistillationTrainer(L.LightningModule):
         # This is to store the student decoder activations
         self.student_decoder_activations = {}
 
+        # This is to store the teacher decoder activations
+        self.teacher_decoder_activations = {}
+
         # Creating a directory to store the results of the run
         self.dirpath = os.path.join(os.getcwd(), "results", "run")
         run_uuid = uuid.uuid4()
@@ -874,6 +877,11 @@ class DistillationTrainer(L.LightningModule):
         self.student_decoder_hooks = []
         for layer_idx in range(self.student.decoder.num_layers):
             self.student_decoder_hooks.append(student.decoder.layers[layer_idx].register_forward_hook(self.get_student_decoder_activation(layer_idx)))
+
+        # Create hooks to store the activations of the teacher decoder
+        self.teacher_decoder_hooks = []
+        for layer_idx in range(6):
+            self.teacher_decoder_hooks.append(self.teacher.model.textual.transformer.encoder.layer[i].output.register_forward_hook(self.get_teacher_decoder_activation(layer_idx)))
 
         #To store the predictions for analysis
         self.validation_step_outputs = []
@@ -981,13 +989,23 @@ class DistillationTrainer(L.LightningModule):
 
 
         #Loss 6: Decoder Feature Distillation
-        teacher_decoder_distill= teacher_hidden_states[:, [0, 2, 3, 5],1542:, :]
+        #teacher_decoder_distill= teacher_hidden_states[:, [0, 2, 3, 5],1542:, :]
+        
+        #Using the teacher decoder activations instead
+        teacher_distill=[]
+        for activations in self.teacher_decoder_activations.values():
+            stacked_activations = torch.stack(activations, dim=0)
+            teacher_distill.append(stacked_activations.squeeze(1))
+        teacher_distill=torch.stack(teacher_distill,dim=0)
+        swapped_tensor = teacher_distill.permute(1, 0, 2, 3)
+        teacher_decoder_distill=swapped_tensor[:,[0, 2, 3, 5],1542:, :]
+
         B,L,S,E=student_final_activations.shape
         student_decoder_distill_proj = student_final_activations.view(-1, E)
         student_decoder_distill=self.student.project_decoder(student_decoder_distill_proj)
         student_decoder_distill = student_decoder_distill.view(B, L, S, -1)
         decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
-
+        
         #Our final Loss function currently looks at Loss 1 + Loss 6 + Loss 3
         loss = ce_loss + decoder_loss + fmap_loss
 
@@ -1004,8 +1022,10 @@ class DistillationTrainer(L.LightningModule):
         # Clear the teacher activations for this batch
         del self.teacher_encoder_activations
         del self.student_decoder_activations
+        del self.teacher_decoder_activations
         self.teacher_encoder_activations = {}
         self.student_decoder_activations = {}
+        self.teacher_decoder_activations = {}
 
         return loss
 
@@ -1058,9 +1078,11 @@ class DistillationTrainer(L.LightningModule):
             
         del self.teacher_encoder_activations
         del self.student_decoder_activations
+        del self.teacher_decoder_activations
         self.teacher_encoder_activations = {}
         self.student_decoder_activations = {}
-    
+        self.teacher_decoder_activations = {}
+
         # Optionally, you can save the results to a file here, or you can return them and collect them in `validation_epoch_end`
         return loss
     
@@ -1116,8 +1138,10 @@ class DistillationTrainer(L.LightningModule):
 
         del self.teacher_encoder_activations
         del self.student_decoder_activations
+        del self.teacher_decoder_activations
         self.teacher_encoder_activations = {}
         self.student_decoder_activations = {}
+        self.teacher_decoder_activations = {}
         return loss
     
     def on_test_epoch_end(self):
@@ -1151,6 +1175,15 @@ class DistillationTrainer(L.LightningModule):
                 self.student_decoder_activations[name].append(output.detach())
             else:
                 self.student_decoder_activations[name] = [output.detach()]
+
+        return hook
+    
+    def get_teacher_decoder_activation(self, name):
+        def hook(model, input, output):
+            if name in self.teacher_decoder_activations:
+                self.teacher_decoder_activations[name].append(output.detach())
+            else:
+                self.teacher_decoder_activations[name] = [output.detach()]
 
         return hook
 
