@@ -1003,6 +1003,8 @@ class DistillationTrainer(L.LightningModule):
         student_decoder_distill_proj = student_final_activations.view(-1, E)
         student_decoder_distill=self.student.project_decoder(student_decoder_distill_proj)
         student_decoder_distill = student_decoder_distill.view(B, L, S, -1)
+        # Swap dimensions 0 and one of student decoder distill
+        student_decoder_distill = student_decoder_distill.permute(1, 0, 2, 3)
         decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
         
         #Our final Loss function currently looks at Loss 1 + Loss 6 + Loss 3
