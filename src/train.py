@@ -69,6 +69,9 @@ def train(
     # Setup WANDB logger
     wandb_logger = WandbLogger(project="real-time-video-captioning")
 
+    unique_run_dir = os.path.join("results", "run", wandb_logger.experiment.name)
+    os.makedirs(unique_run_dir, exist_ok=True)
+
     # Create datasets and dataloaders
     train_dataset = CaptionDataset(**train_data_args)
     train_dl = DataLoader(
@@ -116,16 +119,18 @@ def train(
         student=student_model,
         lr=lr,
         steps=len(train_dl),
-        epochs=trainer_args['max_epochs']
+        epochs=trainer_args['max_epochs'],
+        logpath = unique_run_dir
     )
 
     # Setup logging
-    log_file = os.path.join(distillation_model.dirpath, distillation_model.filename)
+    log_file = os.path.join(unique_run_dir, distillation_model.filename)
     with open(log_file, 'a') as f:
         f.write('\n' * 2)
         f.write('WANDB Experiment Name: ' + wandb_logger.experiment.name + '\n')
 
     # Model checkpoint callback
+    callback_args['dirpath'] = unique_run_dir
     callback = ModelCheckpoint(**callback_args)
 
     # Instantiate the PyTorch Lightning Trainer

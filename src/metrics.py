@@ -1,7 +1,7 @@
 from typing import List, Optional, Union
 from pycocotools.coco import COCO
 from pycocoevalcap.eval import COCOEvalCap
-import json
+import json, os
 from json import encoder
 encoder.FLOAT_REPR = lambda o: format(o, '.3f')
 import sys
@@ -12,8 +12,8 @@ import nltk
 import subprocess
 import evaluate
 
-def calculate_score(outputs: List[dict], filepath: str, uuid: str)->dict:
-    resFile=f'./results/run/validation_preds_{uuid}.json'
+def calculate_score(outputs: List[dict], filepath: str, run_dir: str)->dict:
+    resFile = run_dir + '/' + 'validation_preds.json'
     with open(resFile, 'w') as f:
         json.dump(outputs, f)
 
