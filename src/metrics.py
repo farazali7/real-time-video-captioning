@@ -21,7 +21,7 @@ def calculate_score(outputs: List[dict], filepath: str, run_dir: str)->dict:
         f.write("\n\n")
         f.write(json.dumps(outputs))
         
-    annFile = './data/MSRVTT/annotation/MSR_VTT.json'
+    annFile = './data/MSRVTT/annotations/MSR_VTT.json'
     coco = COCO(annFile)
         
     cocoRes = coco.loadRes(resFile)
