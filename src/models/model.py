@@ -1010,7 +1010,7 @@ class DistillationTrainer(L.LightningModule):
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
-        # self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_decoder_loss", decoder_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
