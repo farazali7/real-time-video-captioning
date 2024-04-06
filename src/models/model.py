@@ -1006,11 +1006,11 @@ class DistillationTrainer(L.LightningModule):
         decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
         
         #Our final Loss function currently looks at Loss 1 + Loss 6 + Loss 3
-        loss = ce_loss + decoder_loss + fmap_loss
+        loss = ce_loss + decoder_loss + fmap_loss + decoder_loss
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
+        # self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_decoder_loss", decoder_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
