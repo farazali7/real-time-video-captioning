@@ -839,13 +839,13 @@ class DistillationTrainer(L.LightningModule):
         self.lr = lr
         self.fmap_distill_loss = nn.MSELoss()
         #This is for loss 4
-        #self.final_encoding_loss=nn.MSELoss()
+        self.final_encoding_loss=nn.MSELoss()
         #This is for loss 2
-        #self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
+        self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
         #This is for loss 3
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)
         #This is for loss 5
-        #self.ce_loss2 = nn.CrossEntropyLoss()
+        self.ce_loss2 = nn.CrossEntropyLoss()
         self.steps=steps
         self.epochs=epochs
         self.logpath = logpath
