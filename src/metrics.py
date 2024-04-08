@@ -12,6 +12,7 @@ import nltk
 import subprocess
 import evaluate
 
+
 def calculate_score(outputs: List[dict], filepath: str, run_dir: str)->dict:
     resFile = run_dir + '/' + 'validation_preds.json'
     with open(resFile, 'w') as f:

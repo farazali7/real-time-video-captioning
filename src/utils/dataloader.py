@@ -79,7 +79,7 @@ class CaptionDataset(Dataset):
         frames = torch.stack([self.transform(frame) for frame in raw_frames])
 
         # frames shape: [N, C, 224, 224], caption shape: [?]
-        return {'frames': frames, 'caption': encoded_caption,'caption-id':caption_id,'vid-id':vid_id}
+        return {'frames': frames, 'caption': encoded_caption, 'caption-id': caption_id, 'vid-id': vid_id}
 
 
 def collate_fn(batch: Any):

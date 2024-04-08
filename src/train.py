@@ -149,12 +149,13 @@ def train(
     )
 
     # Optionally, perform testing
-    # trainer.test(model=distillation_model, dataloaders=test_dl)
+    trainer.test(model=distillation_model, dataloaders=test_dl)
 
     # Cleanup
     wandb_logger.experiment.unwatch(distillation_model)
 
     return distillation_model
+
 
 if __name__ == "__main__":
     # Load configuration
