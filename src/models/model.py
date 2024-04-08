@@ -830,7 +830,7 @@ class DistillationTrainer(L.LightningModule):
     PyTorch Lightning module for knowledge distillation training
     """
 
-    def __init__(self, teacher, student, lr,steps,epochs):
+    def __init__(self, teacher, student, lr, steps, epochs, logpath):
         """ Constructor.
 
         Args:
@@ -845,15 +845,16 @@ class DistillationTrainer(L.LightningModule):
         #Loss 1
         self.fmap_distill_loss = nn.MSELoss()
         #This is for loss 4
-        #self.final_encoding_loss=nn.MSELoss()
+        self.final_encoding_loss=nn.MSELoss()
         #This is for loss 2
         self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
         #This is for loss 3
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)
         #This is for loss 5
-        #self.ce_loss2 = nn.CrossEntropyLoss()
+        self.ce_loss2 = nn.CrossEntropyLoss()
         self.steps=steps
         self.epochs=epochs
+        self.logpath = logpath
         #This is for loss 6
         #self.decoder_distill_loss=nn.MSELoss()
 
@@ -868,9 +869,7 @@ class DistillationTrainer(L.LightningModule):
 
         # Creating a directory to store the results of the run
         self.dirpath = os.path.join(os.getcwd(), "results", "run")
-        run_uuid = uuid.uuid4()
-        self.run_uuid = run_uuid
-        self.filename = f"results_{run_uuid}.txt"
+        self.filename = f"validation_results_and_metrics.txt"
         os.makedirs(self.dirpath, exist_ok=True)
 
         # Create hooks to store the activations of the teacher encoder
@@ -894,7 +893,7 @@ class DistillationTrainer(L.LightningModule):
         self.test_step_outputs = []
 
         # Log configuration parameters to file
-        with open(self.dirpath + '/' + self.filename, 'a') as f:
+        with open(self.logpath + '/' + self.filename, 'a') as f:
             f.write(f'Results for the run: {self.filename}\n')
             f.write('\n************************************\n')
             f.write("\n" * 2)
@@ -1076,7 +1075,7 @@ class DistillationTrainer(L.LightningModule):
         print(f'Student Predictions Beam: {preds_1}')
         print(f'BLEU@4: {loss}')
 
-        with open(self.dirpath + '/' + self.filename, 'a') as f:
+        with open(self.logpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
             f.write("Validation Results\n")
             f.write(f'Epoch: {self.current_epoch}\n')
@@ -1106,7 +1105,7 @@ class DistillationTrainer(L.LightningModule):
     
     def on_validation_epoch_end(self):
         #We call metrics which has a function to calculate BLEU-4, Rouge, Cider, and Meteor
-        metrics.calculate_score(self.validation_step_outputs, self.dirpath + '/' + self.filename, self.run_uuid)
+        metrics.calculate_score(self.validation_step_outputs, self.logpath + '/' + self.filename, self.logpath)
         self.validation_step_outputs.clear()
 
     def test_step(self, batch, batch_idx):
@@ -1136,7 +1135,7 @@ class DistillationTrainer(L.LightningModule):
         #print(f'Student Predictions: {preds}')
         #print(f'Student Predictions Beam: {preds_1}')
 
-        with open(self.dirpath + '/' + self.filename, 'a') as f:
+        with open(self.logpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
             f.write("Test Results\n")
             f.write(f'Epoch: {self.current_epoch}\n')
