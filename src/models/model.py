@@ -935,7 +935,8 @@ class DistillationTrainer(L.LightningModule):
         # LOSS 3: Compute loss between output of student and GT
         y_target = y[:, 1:].reshape(-1)
         y_target = y_target.view(-1)
-        y_pred = student_decoder_output[:, :-1].view(-1, student_decoder_output.size(-1))
+        y_pred = student_decoder_output[:, :-1]
+        y_pred=y_pred.reshape(-1, student_decoder_output.size(-1))
         ce_loss = self.ce_loss(y_pred, y_target)
 
         # LOSS 4: Compute loss between final encoding of Student and Teacher
@@ -984,12 +985,10 @@ class DistillationTrainer(L.LightningModule):
         # decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
         
         # Our final Loss function currently looks at Loss 3
-        loss = ce_loss + kl_loss + fmap_loss
+        loss = ce_loss
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         # Inactive Loss Functions
         # self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)
