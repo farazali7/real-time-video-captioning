@@ -939,8 +939,8 @@ class DistillationTrainer(L.LightningModule):
         ce_loss = self.ce_loss(y_pred, y_target)
 
         # LOSS 4: Compute loss between final encoding of Student and Teacher
-        # final_enc_loss=self.final_encoding_loss(student_visual_features,teacher_visual_features)
-        # teacher_visual_features= torch.stack(teacher_visual_features,dim=0)
+        # final_enc_loss = self.final_encoding_loss(student_visual_features,teacher_visual_features)
+        # teacher_visual_features = torch.stack(teacher_visual_features,dim=0)
         # print(memory.shape)
         # print(teacher_visual_features.shape)
 
