@@ -104,6 +104,9 @@ class StudentCandidateV1(nn.Module):
         self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_head,batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
 
+        self.temporal_encodings = nn.Parameter(torch.randn(6, d_model))
+
+
     def forward(self, x, y):
         # Get frame layer-wise feature maps and final visual representation from image encoder
         image_enc_fmaps, memory = self.forward_image_enc(x)
@@ -129,6 +132,8 @@ class StudentCandidateV1(nn.Module):
 
         # Take last feature map, average spatially, and restore frames as token length [B, F, De]
         memory = torch.mean(image_enc_fmaps[-1], dim=[2, 3]).view(init_shape[0], init_shape[1], -1)
+        #temporal_encodings_expanded = self.temporal_encodings.unsqueeze(0).expand_as(memory)
+        #memory = memory + temporal_encodings_expanded
         #memory=self.transformer_encoder(memory)
         return image_enc_fmaps, memory
 
@@ -148,12 +153,12 @@ class StudentCandidateV1(nn.Module):
         tgt_embed = tgt_embed / torch.sqrt(torch.tensor(self.embed.embedding_dim))
         #Project to vocab length
         out = self.decoder(tgt=tgt_embed, memory=memory,
-                           tgt_mask=tgt_mask, tgt_key_padding_mask=pad_mask, tgt_is_causal=True)
+                           tgt_mask=tgt_mask, tgt_key_padding_mask=pad_mask,tgt_is_causal=True)
         out = self.linear(out)
         #Output Result
         return out
 
-    def greedy_decode(self, src: torch.Tensor, max_len: int = 20):
+    def greedy_decode(self, src: torch.Tensor, max_len: int = 10):
         '''
         Greedily decodes a brand new sequence
         Output: The brand new sequence
@@ -186,7 +191,7 @@ class StudentCandidateV1(nn.Module):
 
         return tgt
     
-    def beam_search(self, src: torch.Tensor, max_len: int = 20, k: int = 3):
+    def beam_search(self, src: torch.Tensor, max_len: int = 10, k: int = 3):
         '''
             We want to predict with beams our final sequence
         '''
@@ -837,11 +842,12 @@ class DistillationTrainer(L.LightningModule):
         self.teacher = teacher
         self.student = student
         self.lr = lr
+        #Loss 1
         self.fmap_distill_loss = nn.MSELoss()
         #This is for loss 4
         #self.final_encoding_loss=nn.MSELoss()
         #This is for loss 2
-        #self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
+        self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
         #This is for loss 3
         self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)
         #This is for loss 5
@@ -849,7 +855,7 @@ class DistillationTrainer(L.LightningModule):
         self.steps=steps
         self.epochs=epochs
         #This is for loss 6
-        self.decoder_distill_loss=nn.MSELoss()
+        #self.decoder_distill_loss=nn.MSELoss()
 
         # This is to store the teacher encoder activations
         self.teacher_encoder_activations = {}
@@ -917,8 +923,10 @@ class DistillationTrainer(L.LightningModule):
         student_visual_features = self.student.project(spatially_adjusted_student_enc_fmaps)
         # student_decoder_output = self.student(x,y)
         # Output of the student decoder
+        student_decoder_output_1 = self.student.forward_decoder(y[:,:-1], memory)
+        del self.student_decoder_activations
+        self.student_decoder_activations = {}
         student_decoder_output = self.student.forward_decoder(y, memory)
-        
         #The teacher outputs the teacher logits, and final encoder visual representations and decoder hidden state representations
         out_teacher,teacher_visual_features,teacher_hidden_states = self.teacher.forward_output_logits(x, y)
 
@@ -955,17 +963,23 @@ class DistillationTrainer(L.LightningModule):
         #student_logits = student_decoder_output[-1]
         teacher_logits_kl = teacher_logits/temperature
         student_logits_kl = student_logits/temperature
-        #kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
-        #kl_loss=kl_loss*(temperature ** 2)
+        kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
+        kl_loss=kl_loss*(temperature ** 2)
 
 
         # LOSS 3: Compute loss between output of student and GT
         y_target = y[:, 1:].reshape(-1)
-        y_pred = student_logits[:, :-1].reshape(-1, student_logits.shape[2])
+        y_target=y_target.view(-1)
+        y_pred = student_decoder_output_1.view(-1,student_decoder_output_1.size(-1))
         ce_loss = self.ce_loss(y_pred, y_target)
+        
+        
 
         #LOSS 4: Compute loss between final encoding of Student and Teacher
         #final_enc_loss=self.final_encoding_loss(student_visual_features,teacher_visual_features)
+        #teacher_visual_features= torch.stack(teacher_visual_features,dim=0)
+        #print(memory.shape)
+        #print(teacher_visual_features.shape)
 
 
         #LOSS 5: Cross entropy between teacher targets and Student predictions
@@ -1004,20 +1018,24 @@ class DistillationTrainer(L.LightningModule):
         student_decoder_distill_proj = student_final_activations.view(-1, E)
         student_decoder_distill=self.student.project_decoder(student_decoder_distill_proj)
         student_decoder_distill = student_decoder_distill.view(B, L, S, -1)
-        decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
+        student_decoder_distill=student_decoder_distill.permute(1, 0, 2, 3)
+
+        #decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
         
-        #Our final Loss function currently looks at Loss 1 + Loss 6 + Loss 3
-        loss = ce_loss + decoder_loss + fmap_loss
+        #Our final Loss function currently looks at Loss 3
+        loss = ce_loss + kl_loss+fmap_loss
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_decoder_loss", decoder_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         #Inactive Loss Functions
         #self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)
         #self.log("train_enc_loss", final_enc_loss, prog_bar=True, on_step=False, on_epoch=True)
+        #self.log("train_decoder_loss", decoder_loss, prog_bar=True, on_step=False, on_epoch=True)
         #self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
+        #self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         # Clear the teacher activations for this batch
         del self.teacher_encoder_activations
@@ -1095,29 +1113,28 @@ class DistillationTrainer(L.LightningModule):
         x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
         #We are performing both decoders to see which has better performance
         student_decoder_output = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
-        out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
+        #out_student_1 = self.student.beam_search(x, max_len=y.shape[-1]+5)
         #Decoding the greedy prediction from student using teacher tokenizer
         preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in student_decoder_output]
         #Decoding the beam prediction from student using teacher tokenizer
-        preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
+        #preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
         #Decoding the captions in Ground Truth with tokenizer
         caps = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in y]
         #Grabbing the predictions of the teacher as well in teacher inference
-        out_teacher = self.teacher(x)
-        teacher_captions = []
-        for i in range(0, len(y)):
-            teacher_captions.append(out_teacher[i]['cap'])
+        #out_teacher = self.teacher(x)
+        #teacher_captions = []
+        #for i in range(0, len(y)):
+        #    teacher_captions.append(out_teacher[i]['cap'])
 
         # Add BLEU for student
         caps = [[c] for c in caps]
         
-        loss = metrics.calculate_bleu_score_corpus(caps, teacher_captions)
+        loss = metrics.calculate_bleu_score_corpus(caps, preds)
         #add_loss = metrics.calculate_meteor_score_corpus(caps, preds)
         #rouge_loss = metrics.calculate_rouge_score(caps, preds)
-        print(f'Ground-Truth Captions: {caps}')
-        print(f'Teacher Captions: {teacher_captions}')
-        print(f'Student Predictions: {preds}')
-        print(f'Student Predictions Beam: {preds_1}')
+        #print(f'Ground-Truth Captions: {caps}')
+        #print(f'Student Predictions: {preds}')
+        #print(f'Student Predictions Beam: {preds_1}')
 
         with open(self.dirpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
@@ -1130,10 +1147,10 @@ class DistillationTrainer(L.LightningModule):
 
         self.log("test_loss", loss, prog_bar=True)
 
-        for i in range(0,len(teacher_captions)):
+        for i in range(0,len(preds)):
             self.test_step_outputs.append({
             "image_id": str(vid_id[i]),  # Make sure this is just an integer, not a tensor
-            "caption": teacher_captions[i]
+            "caption": preds[i]
         })
 
         del self.teacher_encoder_activations

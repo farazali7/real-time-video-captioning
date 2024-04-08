@@ -1,7 +1,7 @@
 """
-Training Script
+Testing Script
 
-This script is used for training models using knowledge distillation.
+This script is used for testing models, inference and saving student, in case not done in training.
 """
 
 import os
@@ -21,44 +21,22 @@ from config import cfg
 from src.models.model import StudentCandidateV1, GenerativeImageTextTeacher, DistillationTrainer
 from .utils.dataloader import CaptionDataset, collate_fn
 
-# Set WANDB mode from config
-os.environ['WANDB_MODE'] = cfg['WANDB']['MODE']
 
-
-def plot_loss(loss_array):
-    """
-    Plots the training loss over epochs.
-
-    Args:
-        loss_array (List[float]): A list containing loss values per epoch.
-    """
-    plt.scatter(range(len(loss_array)), loss_array, c="red", s=1)
-    plt.title('Plot of the Loss Function')
-    plt.xlabel('Epochs')
-    plt.ylabel('Training Loss')
-    plt.show()
-
-
-def train(
-        train_data_args: Dict, 
-        val_data_args: Dict, 
+def test(  
         test_data_args: Dict,
         student_model_args: Dict, 
-        teacher_model_args: Dict,
-        callback_args: Dict, 
+        teacher_model_args: Dict, 
         trainer_args: Dict, 
         batch_size: int, 
-        lr: float) -> DistillationTrainer:
+        lr: float,
+        path:str) -> DistillationTrainer:
     """
-    Training function for knowledge distillation experiments.
+    Test function for knowledge distillation experiments.
 
     Args:
-        train_data_args (Dict): Dictionary of train dataset arguments.
-        val_data_args (Dict): Dictionary of validation dataset arguments.
         test_data_args (Dict): Dictionary of test dataset arguments.
         student_model_args (Dict): Dictionary of student model instance arguments.
         teacher_model_args (Dict): Dictionary of teacher model instance arguments.
-        callback_args (Dict): Dictionary of training callback arguments.
         trainer_args (Dict): Dictionary of PyTorch Lightning Trainer arguments.
         batch_size (int): Batch size for the training.
         lr (float): Learning rate for the optimizer.
@@ -66,33 +44,6 @@ def train(
     Returns:
         DistillationTrainer: The trained distillation model instance.
     """
-    # Setup WANDB logger
-    wandb_logger = WandbLogger(project="real-time-video-captioning")
-
-    # Create datasets and dataloaders
-    train_dataset = CaptionDataset(**train_data_args)
-    train_dl = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        pin_memory=True,
-        num_workers=2,
-        collate_fn=collate_fn,
-        persistent_workers=True
-    )
-
-    val_dataset = CaptionDataset(
-        **val_data_args
-    )
-    val_dl = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        pin_memory=True,
-        num_workers=4,
-        collate_fn=collate_fn,
-        persistent_workers=True
-    )
     
     test_dataset = CaptionDataset(
         **test_data_args
@@ -108,48 +59,25 @@ def train(
         persistent_workers=True
     )
 
-    # Instantiate student and teacher models
     student_model = StudentCandidateV1(**student_model_args)
     teacher_model = GenerativeImageTextTeacher(**teacher_model_args)
-    distillation_model = DistillationTrainer(
-        teacher=teacher_model,
+    model=DistillationTrainer.load_from_checkpoint(checkpoint_path=path,teacher=teacher_model,
         student=student_model,
         lr=lr,
-        steps=len(train_dl),
-        epochs=trainer_args['max_epochs']
-    )
-
-    # Setup logging
-    log_file = os.path.join(distillation_model.dirpath, distillation_model.filename)
-    with open(log_file, 'a') as f:
-        f.write('\n' * 2)
-        f.write('WANDB Experiment Name: ' + wandb_logger.experiment.name + '\n')
-
-    # Model checkpoint callback
-    callback = ModelCheckpoint(**callback_args)
-
-    # Instantiate the PyTorch Lightning Trainer
-    trainer = L.Trainer(
-        **trainer_args,
-        callbacks=[callback],
-        logger=wandb_logger,
-        num_sanity_val_steps=0
-    )
+        steps=len(test_dl),
+        epochs=trainer_args['max_epochs'])
     
-    # Fit the model
-    trainer.fit(
-        model=distillation_model,
-        train_dataloaders=train_dl,
-        val_dataloaders=val_dl
-    )
-
+    #student_model=model.student
+    #torch.save(student_model,"results/student_model.pt")
+   
+    # Instantiate the PyTorch Lightning Trainer
+    trainer = L.Trainer()
+    
     # Optionally, perform testing
-    # trainer.test(model=distillation_model, dataloaders=test_dl)
+    trainer.test(model=model, dataloaders=test_dl)
 
-    # Cleanup
-    wandb_logger.experiment.unwatch(distillation_model)
+    return model
 
-    return distillation_model
 
 if __name__ == "__main__":
     # Load configuration
@@ -219,14 +147,4 @@ if __name__ == "__main__":
 
     batch_size, lr = train_args['BATCH_SIZE'], train_args['LR']
 
-    train(
-        train_data_args,
-        val_data_args,
-        test_data_args,
-        student_model_args,
-        teacher_model_args,
-        callback_args,
-        trainer_args,
-        batch_size,
-        lr
-    )
+    test(test_data_args,student_model_args,teacher_model_args,trainer_args,batch_size,lr,"results/all_4_losses.ckpt")
