@@ -67,14 +67,14 @@ def test(
         steps=len(test_dl),
         epochs=trainer_args['max_epochs'])
     
-    #student_model=model.student
-    #torch.save(student_model,"results/student_model.pt")
+    student_model=model.student
+    torch.save(student_model,"results/student_model.pt")
    
     # Instantiate the PyTorch Lightning Trainer
     trainer = L.Trainer()
     
     # Optionally, perform testing
-    trainer.test(model=model, dataloaders=test_dl)
+    #trainer.test(model=model, dataloaders=test_dl)
 
     return model
 

@@ -101,10 +101,10 @@ class StudentCandidateV1(nn.Module):
         #This is to add positional encoding to the input target of decoder
         self.pos_enc = PositionalEncoding(d_model=d_model)
         #This was to see if adding encoder layers would help given the different images in a video can attend to eachother
-        self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_head,batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
+        #self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_head,batch_first=True)
+        #self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
 
-        self.temporal_encodings = nn.Parameter(torch.randn(6, d_model))
+        #self.temporal_encodings = nn.Parameter(torch.randn(6, d_model))
 
 
     def forward(self, x, y):
@@ -827,7 +827,7 @@ class DistillationTrainer(L.LightningModule):
         # Loss 5
         self.ce_loss2 = nn.CrossEntropyLoss()
         # Loss 6
-        # self.decoder_distill_loss=nn.MSELoss()
+        self.decoder_distill_loss=nn.MSELoss()
 
         self.steps = steps
         self.epochs = epochs
@@ -968,7 +968,7 @@ class DistillationTrainer(L.LightningModule):
 
         # Loss 6: Decoder Feature Distillation
         # Using the teacher decoder activations instead
-        teacher_distill = []
+        ''' teacher_distill = []
         for activations in self.teacher_decoder_activations.values():
             stacked_activations = torch.stack(activations, dim=0)
             teacher_distill.append(stacked_activations.squeeze(1))
@@ -982,13 +982,14 @@ class DistillationTrainer(L.LightningModule):
         student_decoder_distill = student_decoder_distill.view(B, L, S, -1)
         student_decoder_distill=student_decoder_distill.permute(1, 0, 2, 3)
 
-        # decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)
+        decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)'''
         
         # Our final Loss function currently looks at Loss 3
-        loss = ce_loss
+        loss = kl_loss + ce_loss
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         # Inactive Loss Functions
         # self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)

@@ -31,7 +31,7 @@ cfg = {
             'strategy': 'auto'
         },
         'LR': 1e-4,
-        'BATCH_SIZE': 12,
+        'BATCH_SIZE': 8,
     },
     'MODEL': {
         # STUDENT MODELS
@@ -41,7 +41,7 @@ cfg = {
             'n_head': 8,
             'd_ffn': 1024,
             'dropout': 0.3,
-            'num_decoder_layers': 4
+            'num_decoder_layers': 5
         },
         # TEACHER MODELS
         'GenerativeImageTextTeacher': {
