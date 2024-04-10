@@ -1,7 +1,6 @@
 '''
 CONFIGURATION SETTINGS FOR PROJECT
 '''
-import torch
 
 cfg = {
     'SEED': 5,
@@ -40,8 +39,8 @@ cfg = {
             'd_model': 576,
             'n_head': 8,
             'd_ffn': 1024,
-            'dropout': 0.3,
-            'num_decoder_layers': 4
+            'dropout': 0.35,
+            'num_decoder_layers': 5
         },
         # TEACHER MODELS
         'GenerativeImageTextTeacher': {
