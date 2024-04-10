@@ -12,7 +12,7 @@ cfg = {
     'CALLBACK': {
         'dirpath': 'results/',
         'filename': 'model-{epoch:02d}',
-        'save_top_k': 2,
+        'save_top_k': 1,
         'monitor': 'epoch',
         'mode': 'max',
     },
@@ -24,7 +24,7 @@ cfg = {
         'STUDENT_MODEL_DEF': 'StudentCandidateV1',
         'TEACHER_MODEL_DEF': 'GenerativeImageTextTeacher',
         'TRAINER': {
-            'max_epochs': 30,
+            'max_epochs': 20,
             'precision': 16,
             'enable_checkpointing': True,
             'strategy': 'auto'
@@ -39,7 +39,7 @@ cfg = {
             'd_model': 576,
             'n_head': 8,
             'd_ffn': 1024,
-            'dropout': 0.35,
+            'dropout': 0.3,
             'num_decoder_layers': 5
         },
         # TEACHER MODELS

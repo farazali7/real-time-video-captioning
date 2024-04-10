@@ -1,4 +1,7 @@
-import torch, uuid, os
+'''
+Import Statements
+'''
+import torch
 import torch.nn as nn
 from generativeimage2text.layers.decoder import CaptioningModel, BeamHypotheses, top_k_top_p_filtering, \
     GeneratorWithBeamSearch
@@ -12,12 +15,27 @@ from torch.nn import functional as F
 import timm
 import lightning as L
 import numpy as np
-
+import torchvision.transforms.functional as TF
+import hashlib
+from torch.optim.lr_scheduler import OneCycleLR
+import time
+import av
+from transformers import AutoImageProcessor, AutoTokenizer, VisionEncoderDecoderModel
 from src.utils.masking import create_padding_mask, create_casual_mask
 import src.metrics as metrics
+import os
 from config import cfg
+import uuid
 
+'''
+If you have NVIDIA CUDA
+'''
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+'''
+If you have Apple Metal Silicon
+'''
+# device= torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 class TinyVIT(nn.Module):
     def __init__(self, model_name: str):
@@ -62,18 +80,46 @@ class StudentCandidateV1(nn.Module):
                                                         dim_feedforward=d_ffn, dropout=dropout,
                                                         batch_first=True)
         self.decoder = nn.TransformerDecoder(self.decoder_layer, num_decoder_layers)
-
+        #We are calling an embedding function to embed our vocab tokens passed as input to decoder to d_model
         self.embed = nn.Embedding(vocab_length, d_model)
+        #This will be to project it back to vocab
         self.linear = nn.Linear(d_model, vocab_length)
+        #Default tokens from BERT tokenizer same used as teacher
         self.cls_token_id = cls_token_id
         self.sep_token_id = sep_token_id
 
         # Make feature map projectors
         self.projectors = nn.Sequential(*[nn.LazyLinear(1024) for _ in range(4)])
+        
+        #These linear layers were created to project the final encoding dimension from encoder to match teacher visual features
+        self.upsample = nn.LazyLinear(1542)
+        self.project = nn.LazyLinear(1024)
 
+        #This is for decoder distillation projection
+        self.project_decoder=nn.LazyLinear(768)
+
+        #This is to add positional encoding to the input target of decoder
         self.pos_enc = PositionalEncoding(d_model=d_model)
+        #This was to see if adding encoder layers would help given the different images in a video can attend to eachother
+        #self.encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_head,batch_first=True)
+        #self.transformer_encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
+
+        #self.temporal_encodings = nn.Parameter(torch.randn(6, d_model))
+
 
     def forward(self, x, y):
+        # Get frame layer-wise feature maps and final visual representation from image encoder
+        image_enc_fmaps, memory = self.forward_image_enc(x)
+
+        # Pass labels and memory through decoder for final textual output
+        out = self.forward_decoder(y, memory)
+
+        return image_enc_fmaps + [out]
+
+    def forward_image_enc(self, x):
+        '''
+        This could be useful method since we won't have to call encoder everytime in our greedy/beam decoders
+        '''
         # x shape: [B, F, C, H, W]
         # Combine frames axis with batch to get shape: [BxF, C, H, W]
         # Check if the model is in training mode
@@ -86,77 +132,138 @@ class StudentCandidateV1(nn.Module):
 
         # Take last feature map, average spatially, and restore frames as token length [B, F, De]
         memory = torch.mean(image_enc_fmaps[-1], dim=[2, 3]).view(init_shape[0], init_shape[1], -1)
-        # Create padding and causal masks for captions
+        #temporal_encodings_expanded = self.temporal_encodings.unsqueeze(0).expand_as(memory)
+        #memory = memory + temporal_encodings_expanded
+        #memory=self.transformer_encoder(memory)
+        return image_enc_fmaps, memory
+
+    def forward_decoder(self, y, memory):
+        '''
+        Again instead of having the forward call multiple times, this saves time
+        '''
+        #Add padding to ensure we aren't looking at parts of Y that have padding token
         pad_mask = create_padding_mask(y).to(device)
+        #We embed our current y (could be caption if teacher forcing, or what we generated up until now)
         tgt_mask = create_casual_mask(y.shape[1]).to(device)
+        #We then add positional encoding
         tgt_embed = self.embed(y)
+        #As per the original paper we divide by Sqrt D our embeddings
         tgt_embed = self.pos_enc(tgt_embed)
+        #We decode
         tgt_embed = tgt_embed / torch.sqrt(torch.tensor(self.embed.embedding_dim))
+        #Project to vocab length
         out = self.decoder(tgt=tgt_embed, memory=memory,
-                           tgt_mask=tgt_mask, tgt_key_padding_mask=pad_mask, tgt_is_causal=True)
+                           tgt_mask=tgt_mask, tgt_key_padding_mask=pad_mask,tgt_is_causal=True)
         out = self.linear(out)
+        #Output Result
+        return out
 
-        return image_enc_fmaps + [out]
+    def greedy_decode(self, src: torch.Tensor, max_len: int = 10):
+        '''
+        Greedily decodes a brand new sequence
+        Output: The brand new sequence
+        '''
+        #Ensure the decoder is in eval mode
+        self.image_encoder.eval()
+        with torch.no_grad():
+            _, memory = self.forward_image_enc(src)
 
-    def greedy_decode(self, src: torch.Tensor, max_len: int = 20):
         self.decoder.eval()
         self.training = False
         batch_size = src.size(0)
         # tgt Shape: [B, 1]
+        # Start off by creating a tensor of shape BxStart Token
         tgt = torch.tensor([self.cls_token_id]*batch_size, dtype=torch.long).unsqueeze(1).to(device)
+        #While we haven't reached the max Length
         for i in range(max_len):
+            #Run the forward prediction on our current sequence
             with torch.no_grad():
-                output = self.forward(src, tgt)[-1]
-            output = torch.argmax(output, dim=-1)  # Assuming this gives you [batch_size, current_seq_length]
-            last_tokens = output[:, -1].unsqueeze(-1)  # Correctly select the last token for each item in the batch
-            tgt = torch.cat((tgt, last_tokens), dim=1)  # Concatenate along the sequence length dimension
+                output = self.forward_decoder(tgt, memory)
+            #Get the best word predicted for each token
+            output = torch.argmax(output, dim=-1) 
+            #Grab the token from the last token predicted
+            last_tokens = output[:, -1].unsqueeze(-1)
+            #Add this token to our existing generated sequence, note we aren't embedding as this is taken care of in our forward
+            tgt = torch.cat((tgt, last_tokens), dim=1)
+            #If the token we just added was the end of sequence token we just end our sequence
             if torch.all(last_tokens.squeeze(-1) == self.sep_token_id):
                 break
 
         return tgt
     
-    def beam_search(self, src: torch.Tensor, max_len: int = 20, k: int = 5):
+    def beam_search(self, src: torch.Tensor, max_len: int = 10, k: int = 3):
+        '''
+            We want to predict with beams our final sequence
+        '''
+        #Ensure the decoder and encoder is set to eval mode
         self.decoder.eval()
+        self.image_encoder.eval()
+
         batch_size = src.size(0)
-        # Initialize the start tokens
+        # Initialize the start tokens and sequences Batch Size x 1
         tgt = torch.full((batch_size, 1), self.cls_token_id, dtype=torch.long).to(device)
 
-        # Store scores for each sentence
+        #We also know we will need to keep track of scores for each of these sequences Batch x K
         scores = torch.zeros(batch_size, k).to(device)
-        # Initialize the sequences for each beam
+        # We ensure the sequences are expanded so its Batch Size x k
         sequences = tgt.unsqueeze(1).expand(-1, k, -1)
+        #Create another tensor of batch sizex K^2 x 3 to help manage when we evaluate beams
         all_candidates = torch.empty(batch_size, k*k, 3, device=device)
 
-        # For the first step, process only the start token
+        #Part of beam search to handle end of sequence
+        '''# Finished sequences to add those beams that have completed with eos token generated
+        finished_seqs = torch.full((batch_size, k, max_len), eos_token_id, dtype=torch.long, device=device)
+        #The scores for each of these finished sequences
+        finished_scores = torch.full((batch_size, k), 0, dtype=torch.float, device=device)
+        #Keeping track of the finished counts for each batch to see if we have 5 sequences that have finished
+        finished_counts = torch.zeros(batch_size, dtype=torch.long, device=device)'''
+        
+        #We first need to generate atleast one token for each beam
         with torch.no_grad():
-            decoder_output = self.forward(src, tgt)  # Get initial output
-            log_probs = F.log_softmax(decoder_output[-1][:, -1, :], dim=-1)
+            #We generate the memory for the images one time
+            _, memory = self.forward_image_enc(src)
+            #We get the output of the forward decoder
+            decoder_output = self.forward_decoder(tgt, memory)
+            #Get the log probabilities for all the tokens in the last predicted token
+            log_probs = F.log_softmax(decoder_output[:, -1, :], dim=-1)
+            #Use topk to find the best vocab indices and their respective scores
             scores, top_indices = log_probs.topk(k, dim=-1)
-        # Turn it to batch x k x2
+        #We add these top indices directly to our sequences, each beam represents one of the top 5 tokens predicted
         sequences = torch.cat([sequences, top_indices.unsqueeze(-1)], dim=-1)
 
-        # Start beam search loop
+        # Start beam search loop, since we predicted one token for each beam start at 2nd token
         for step in range(2, max_len):
+            #For each beam we have to predict one, since each beam has different tgt now
             for i in range(k):
+                #Grab all the sequences of the beams one at a time, but across the batch
                 tgt = sequences[:, i]
                 with torch.no_grad():
-                    decoder_output = self.forward(src, tgt)
-                    log_probs = F.log_softmax(decoder_output[-1][:, -1, :], dim=-1)
+                    #Predict the next token
+                    decoder_output = self.forward_decoder(tgt, memory)
+                    #Get the log probabilities for the last token predicted
+                    log_probs = F.log_softmax(decoder_output[:, -1, :], dim=-1)
+                    #Grab the best scores and indices, this result would be Batch x K
                     top_scores, top_indices = log_probs.topk(k, dim=-1)  # BxK
+                #Now we take the previous score for that beam and add the scores we just got.
+                #Our scores for each batch would be size Bx1 where as our top_scores is Bxk so broadcasted to get Bxk scores for this beam
                 local_scores = scores[:, i].unsqueeze(-1) + top_scores  # Bx1 + BxK
+                #Now we figure out where in our all_candidates, the tensor to help in beam evaluation we should place
                 offset = i * k
                 all_candidates[:, offset:offset+k, 0] = local_scores
                 all_candidates[:, offset:offset+k, 1] = i
                 all_candidates[:, offset:offset+k, 2] = top_indices
 
+            #Now that for this step we finished generating all the beams filled in all candidates lets evaluate by sorting.
             scores_to_sort = all_candidates[:,:,0].view(batch_size, -1)  # Shape: [batch_size, k*k]
+            #We create create a sorted tensor
             sorted_scores, sorted_indices = scores_to_sort.sort(dim=1, descending=True)
             # Now, use sorted_indices to select top k candidates
             topk_indices = sorted_indices[:, :k]  # Get indices of top k scores for each batch
-            # Initialize the new sequences tensor for this step
+            # Initialize the new sequences tensor for this step, where this tensor should be one longer than our existing sequences since we are adding a new token
             new_sequences = torch.zeros(batch_size, k, step + 1, dtype=torch.long, device=device)
             # Extracting the beam indices and token indices from all_candidates using topk_indices
             for b in range(batch_size):
+                #For each top candidate
                 for idx in range(k):
                     # Get the global index from topk_indices, which points to the flat structure of all_candidates
                     global_idx = topk_indices[b, idx]
@@ -172,7 +279,43 @@ class StudentCandidateV1(nn.Module):
                     # Update the score for this candidate
                     scores[b, idx] = all_candidates[b, global_idx, 0]  # Update score with the new score
 
+                    #Part of Beam Search to handle end of sequence
+                    '''
+                    #If the token predicted was the EOS token and for this batch if we haven't predicted all the EOS beams yet
+                        if token_idx == eos_token_id and finished_counts[b] < k:
+                            # Store finished sequence
+                            finished_seqs[b, finished_counts[b],0:step] = sequences[b, beam_idx]
+                            finished_seqs[b, finished_counts[b], step] = token_idx  # Ensure EOS is included
+                            finished_scores[b, finished_counts[b]] = new_score
+                            finished_counts[b] += 1
+                        else:
+                            # Update the new_sequences tensor
+                            new_sequences[b, idx, :-1] = sequences[b, beam_idx, :]  # Copy the previous sequence from selected beam
+                            new_sequences[b, idx, -1] = token_idx  # Append the new token
+                            
+                            # Update the score for this candidate
+                            scores[b, idx] = new_score
+                    '''
+            
+            #Now we replace our sequences with new sequences
             sequences=new_sequences
+
+        #Part of Beam Search to handle end of sequence
+        '''# Select the best sequence for each batch
+            final_sequences = []
+            #We check to see for each batch
+            for batch_idx in range(batch_size):
+                #If there is any sequence that finished 
+                if finished_counts[batch_idx] > 0:
+                    #We take the one that had the largest score
+                    best_finished_idx = finished_scores[batch_idx].argmax()
+                    final_sequences.append(finished_seqs[batch_idx, best_finished_idx])
+                #Otherwise we just take the beam that had the highest score at the end
+                else:
+                    best_seq_idx = scores[batch_idx].argmax()
+                    final_sequences.append(sequences[batch_idx, best_seq_idx])
+
+            return torch.stack(final_sequences)'''
 
         # Choose the sequence with the highest score
         final_sequences = sequences[torch.arange(batch_size), scores.argmax(dim=-1)]
@@ -180,6 +323,9 @@ class StudentCandidateV1(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
+    '''
+    Applies the vanilla positional encoding by the Transformer paper with Batch First
+    '''
     def __init__(self, d_model: int, max_len=500):
         super(PositionalEncoding, self).__init__()
         # Compute the positional encodings once in log space.
@@ -275,8 +421,12 @@ class GenerativeImageTextModel(CaptioningModel):
             hidden_valid_mask=visual_features_valid,
             bi_valid_mask_caption=batch.get('bi_valid_mask_caption'),
         )
-
-        return output_logits
+        hidden_states=[]
+        for i in output_logits[1]:
+            squeezed_i = i.squeeze(0)
+            hidden_states.append(squeezed_i)
+        hidden_states=torch.stack(hidden_states,dim=0)
+        return output_logits[0],visual_features,hidden_states
 
     def infer(self, batch, visual_features, visual_features_valid, search_param=None):
         batch_size = visual_features.size(0)
@@ -550,6 +700,7 @@ def get_git_model(tokenizer, param):
         mask_future_positions=True,
         padding_idx=0,
         decoder_type='bert_en',
+        output_hidden_states=True,
         visual_projection_type='linearLn',
     )
 
@@ -570,7 +721,7 @@ def get_git_model(tokenizer, param):
     )
 
     return model
-
+    
 
 class GenerativeImageTextTeacher(nn.Module):
     """
@@ -601,13 +752,17 @@ class GenerativeImageTextTeacher(nn.Module):
     def forward_output_logits(self, x, y):
         list_of_sequences = [list(i) for i in x]
         out = []
+        visual_features = []
+        hidden_states = []
         for i, seq in enumerate(list_of_sequences):
             imgs = [i.unsqueeze(0) for i in seq]
             batch = {'image': imgs,
                      'caption_tokens': y[i].unsqueeze(0)}
-            res = self.model.forward_one_custom(batch=batch)
+            res, visual_feature, hidden_state = self.model.forward_one_custom(batch=batch)
             out.append(res)
-        return out
+            visual_features.append(visual_feature)
+            hidden_states.append(hidden_state)
+        return out, visual_features, hidden_states
 
     def forward(self, x):
         list_of_sequences = [list(i) for i in x]
@@ -648,7 +803,7 @@ class DistillationTrainer(L.LightningModule):
     PyTorch Lightning module for knowledge distillation training
     """
 
-    def __init__(self, teacher, student, lr,steps,epochs):
+    def __init__(self, teacher, student, lr, steps, epochs, logpath):
         """ Constructor.
 
         Args:
@@ -660,23 +815,58 @@ class DistillationTrainer(L.LightningModule):
         self.teacher = teacher
         self.student = student
         self.lr = lr
-        self.fmap_distill_loss = nn.MSELoss()
-        self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
-        self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)  # Ignore the padding from the dataloader
-        self.ce_loss2 = nn.CrossEntropyLoss(ignore_index=0)  # Ignore the padding from the dataloader
-        self.steps=steps
-        self.epochs=epochs
-        self.teacher_activations = {}
-        self.dirpath = os.path.join(os.getcwd(), "results", "run")
-        self.filename = f"results_{uuid.uuid4()}.txt"
-        os.makedirs(self.dirpath, exist_ok=True)
-        # Create hooks for teacher feature/attention maps we want
-        self.wanted_block_indices = torch.arange(0, 23, 6)
-        for i, block_idx in enumerate(self.wanted_block_indices):
-            self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_activation(i))
 
-        # Log configuration parameters
-        with open(self.dirpath + '/' + self.filename, 'a') as f:
+        # Loss 1
+        self.fmap_distill_loss = nn.MSELoss()
+        # Loss 4
+        self.final_encoding_loss=nn.MSELoss()
+        # Loss 2
+        self.kl_div_loss = nn.KLDivLoss(reduction='batchmean')
+        # Loss 3
+        self.ce_loss = nn.CrossEntropyLoss(ignore_index=0)
+        # Loss 5
+        self.ce_loss2 = nn.CrossEntropyLoss()
+        # Loss 6
+        self.decoder_distill_loss=nn.MSELoss()
+
+        self.steps = steps
+        self.epochs = epochs
+        self.logpath = logpath
+
+        # This is to store the teacher encoder activations
+        self.teacher_encoder_activations = {}
+
+        # This is to store the student decoder activations
+        self.student_decoder_activations = {}
+
+        # This is to store the teacher decoder activations
+        self.teacher_decoder_activations = {}
+
+        # Creating a directory to store the results of the run
+        self.filename = f"_results_and_metrics.txt"
+
+        # Create hooks to store the activations of the teacher encoder
+        self.encoder_wanted_block_indices = torch.arange(0, 23, 6)
+        self.teacher_encoder_hooks = []
+        for i, block_idx in enumerate(self.encoder_wanted_block_indices):
+            self.teacher_encoder_hooks.append(self.teacher.model.image_encoder.transformer.resblocks[block_idx].register_forward_hook(self.get_teacher_encoder_activation(i)))
+
+        # Create hooks to store the activations of the student decoder
+        self.student_decoder_hooks = []
+        for layer_idx in range(self.student.decoder.num_layers):
+            self.student_decoder_hooks.append(student.decoder.layers[layer_idx].register_forward_hook(self.get_student_decoder_activation(layer_idx)))
+
+        # Create hooks to store the activations of the teacher decoder
+        self.teacher_decoder_hooks = []
+        for layer_idx in range(6):
+            self.teacher_decoder_hooks.append(self.teacher.model.textual.transformer.encoder.layer[i].output.register_forward_hook(self.get_teacher_decoder_activation(layer_idx)))
+
+        # To store the predictions for analysis
+        self.validation_step_outputs = []
+        self.test_step_outputs = []
+
+        # Log configuration parameters to file
+        with open(self.logpath + '/' + self.filename, 'a') as f:
             f.write(f'Results for the run: {self.filename}\n')
             f.write('\n************************************\n')
             f.write("\n" * 2)
@@ -693,103 +883,228 @@ class DistillationTrainer(L.LightningModule):
             f.write(f"Precision: {cfg['TRAIN']['TRAINER']['precision']}\n")
     
     def training_step(self, batch, batch_idx):
+        # We ensure the teacher is in eval mode
         self.teacher.eval()
 
-        x, y, caption_id= batch['frames'], batch['caption'], batch['caption-id']
+        # We grab from the dataloader the frames, caption and if needed caption-id to uniquely identify the caption used
+        x, y, _, _ = batch['frames'], batch['caption'], batch['caption-id'], batch['vid-id']
+        
+        # We call the student forward function in two parts which outputs our
+        # encoder feature maps, output logits, final encoder representation
+        student_image_enc_fmaps, memory = self.student.forward_image_enc(x)
 
-        out_student = self.student(x, y)
-        out_teacher = self.teacher.forward_output_logits(x, y)
+        # Output of the student decoder
+        student_decoder_output = self.student.forward_decoder(y, memory)
+
+        # The teacher outputs the teacher logits, and final encoder visual representations
+        # and decoder hidden state representations
+        out_teacher, teacher_visual_features, _ = self.teacher.forward_output_logits(x, y)
+
+        # All to do feature distillation
+        stacked_activations = []
+        # Iterate over batches of activations
+        for batch in self.student_decoder_activations.values():
+            # Each `batch` is a list of tensors; directly stack them
+            stacked_batch = torch.stack(batch)  # This stacks along a new dimension, resulting in [Batch, layers, x, y] for each batch
+            stacked_activations.append(stacked_batch)
+        # Optionally, if you have multiple batches and want to concatenate them along the batch dimension
+        student_final_activations = torch.cat(stacked_activations, dim=0)
 
         # LOSS 1: Get feature maps and match and compute loss
         # Student activations
-        student_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in out_student[:-1]]
-        
+        student_encoder_fmaps = [torch.mean(fmap, dim=[2, 3]) for fmap in student_image_enc_fmaps]
         # Teacher activations (get cls token)
-        teacher_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_activations.values()]
-        teacher_fmaps = [fmap.reshape(-1, 1024) for fmap in teacher_fmaps]
-
+        teacher_encoder_fmaps = [torch.stack(fmap)[:, 0, ...].squeeze() for fmap in self.teacher_encoder_activations.values()]
+        teacher_encoder_fmaps = [fmap.reshape(-1, 1024) for fmap in teacher_encoder_fmaps]
         # Project student fmaps to teacher dimensionality
-        student_fmaps = [self.student.projectors[i](fmap) for i, fmap in enumerate(student_fmaps)]
-
+        student_encoder_fmaps = [self.student.projectors[i](fmap) for i, fmap in enumerate(student_encoder_fmaps)]
         # Compute feature map distillation loss
-        fmap_loss = self.fmap_distill_loss(torch.stack(teacher_fmaps).to(device), torch.stack(student_fmaps).to(device))
+        fmap_loss = self.fmap_distill_loss(torch.stack(teacher_encoder_fmaps).to(device), torch.stack(student_encoder_fmaps).to(device))
 
         # LOSS 2: Compute a loss between output logits of teacher and student
         # Student logits shape: [B, GT_length, vocab]
         # Teacher logits shape: [B, GT_length, vocab]
-
         temperature = 1
         teacher_logits = torch.cat(out_teacher, dim=0).to(device)
-        student_logits = out_student[-1]
-
+        student_logits = student_decoder_output
         teacher_logits_kl = teacher_logits/temperature
         student_logits_kl = student_logits/temperature
         kl_loss = self.kl_div_loss(student_logits_kl.log_softmax(dim=-1), teacher_logits_kl.softmax(dim=-1))
-        kl_loss=kl_loss*(temperature ** 2)
+        kl_loss = kl_loss*(temperature ** 2)
 
         # LOSS 3: Compute loss between output of student and GT
         y_target = y[:, 1:].reshape(-1)
-        y_pred = student_logits[:, :-1].reshape(-1, student_logits.shape[2])
-
+        y_target = y_target.view(-1)
+        y_pred = student_decoder_output[:, :-1]
+        y_pred=y_pred.reshape(-1, student_decoder_output.size(-1))
         ce_loss = self.ce_loss(y_pred, y_target)
 
-        loss = ce_loss + kl_loss + fmap_loss
+        # LOSS 4: Compute loss between final encoding of Student and Teacher
+        # final_enc_loss = self.final_encoding_loss(student_visual_features,teacher_visual_features)
+        # teacher_visual_features = torch.stack(teacher_visual_features,dim=0)
+        # print(memory.shape)
+        # print(teacher_visual_features.shape)
+
+        # LOSS 5: Tried but didn't work:
+        # Cross entropy between teacher targets and Student predictions
+        # Get the output of teacher inference
+        # out_teacher_inference=self.teacher(x)
+        # n_student_tokens=student_logits.shape[1]
+        # out_teacher_inference_targets=[]
+        # for i in out_teacher_inference:
+            # teacher_tokens = i['predictions'][0].tolist()
+
+            # Ensure the teacher's sequence is the same length as the student's
+            # adjusted_teacher_tokens = teacher_tokens[:n_student_tokens]  # Truncate if necessary
+            # adjusted_teacher_tokens += [102] * (n_student_tokens - len(adjusted_teacher_tokens))  # Pad if necessary
+
+            # out_teacher_inference_targets.append(torch.tensor(adjusted_teacher_tokens))
+
+        # Stack adjusted target sequences and ensure the tensor is on the same device as the logits
+        # out_teacher_inference_targets = torch.stack(out_teacher_inference_targets).to(student_logits.device)
+        # Compute the loss
+        # ce_loss_2 = self.ce_loss2(student_logits.view(-1, student_logits.size(-1)),out_teacher_inference_targets.view(-1))
+
+
+        # Loss 6: Decoder Feature Distillation
+        # Using the teacher decoder activations instead
+        ''' teacher_distill = []
+        for activations in self.teacher_decoder_activations.values():
+            stacked_activations = torch.stack(activations, dim=0)
+            teacher_distill.append(stacked_activations.squeeze(1))
+        teacher_distill = torch.stack(teacher_distill,dim=0)
+        swapped_tensor = teacher_distill.permute(1, 0, 2, 3)
+        teacher_decoder_distill = swapped_tensor[:, [0, 2, 3, 5], 1542:, :]
+
+        B,L,S,E=student_final_activations.shape
+        student_decoder_distill_proj = student_final_activations.view(-1, E)
+        student_decoder_distill=self.student.project_decoder(student_decoder_distill_proj)
+        student_decoder_distill = student_decoder_distill.view(B, L, S, -1)
+        student_decoder_distill=student_decoder_distill.permute(1, 0, 2, 3)
+
+        decoder_loss=self.decoder_distill_loss(teacher_decoder_distill,student_decoder_distill)'''
+        
+        # Our final Loss function currently looks at Loss 3
+        loss = kl_loss + ce_loss
 
         self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
         self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
-        self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("ce_loss", ce_loss, prog_bar=True, on_step=False, on_epoch=True)
+
+        # Inactive Loss Functions
+        # self.log("train_ce_loss_2", ce_loss_2, prog_bar=True, on_step=False, on_epoch=True)
+        # self.log("train_enc_loss", final_enc_loss, prog_bar=True, on_step=False, on_epoch=True)
+        # self.log("train_decoder_loss", decoder_loss, prog_bar=True, on_step=False, on_epoch=True)
+        # self.log("train_kl_loss", kl_loss, prog_bar=True, on_step=False, on_epoch=True)
+        # self.log("train_fmap_loss", fmap_loss, prog_bar=True, on_step=False, on_epoch=True)
 
         # Clear the teacher activations for this batch
-        del self.teacher_activations
-        self.teacher_activations = {}
+        del self.teacher_encoder_activations
+        del self.student_decoder_activations
+        del self.teacher_decoder_activations
+        self.teacher_encoder_activations = {}
+        self.student_decoder_activations = {}
+        self.teacher_decoder_activations = {}
 
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y, caption_id = batch['frames'], batch['caption'],batch['caption-id']
+        x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
 
-        out_student = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
-        out_student_1=self.student.beam_search(x, max_len=y.shape[-1]+5)
+        # We are performing both decoders to see which has better performance
+        student_decoder_output = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
 
-        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student]
-        preds_1 = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in out_student_1]
+        # Decoding the greedy prediction from student using teacher tokenizer
+        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in student_decoder_output]
+
+        # Decoding the captions in Ground Truth with tokenizer
         caps = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in y]
-        out_teacher = self.teacher(x)
-        teacher_captions = []
-        for i in range(0, len(y)):
-            teacher_captions.append(out_teacher[i]['cap'])
 
         # Add BLEU for student
         caps = [[c] for c in caps]
-        loss = metrics.calculate_bleu_score_corpus(caps, preds)
-        add_loss=metrics.calculate_meteor_score_corpus(caps, preds)
-        rouge_loss=metrics.calculate_rouge_score(caps, preds)
-        print(f'Ground-Truth Captions: {caps}')
-        print(f'Teacher Captions: {teacher_captions}')
-        print(f'Student Predictions: {preds}')
-        print(f'Student Predictions Beam: {preds_1}')
-        print(f'BLEU@4: {loss}')
-        print(f'METEOR: {add_loss}')
-        print(f'ROUGE: {rouge_loss}')
 
-        with open(self.dirpath + '/' + self.filename, 'a') as f:
+        loss = metrics.calculate_bleu_score_corpus(caps, preds)
+
+        print(f'Ground-Truth Captions: {caps}')
+        print(f'Student Predictions: {preds}')
+        print(f'BLEU@4: {loss}')
+
+        with open(self.logpath + '/' + self.filename, 'a') as f:
             f.write("\n" * 2)
             f.write("Validation Results\n")
             f.write(f'Epoch: {self.current_epoch}\n')
             f.write(f'Ground-Truth Captions: {caps}\n')
-            f.write(f'Teacher Captions: {teacher_captions}\n')
             f.write(f'Student Predictions: {preds}\n')
-            f.write(f'Student Predictions Beam: {preds_1}\n')
             f.write(f'BLEU@4: {loss}\n')
-            f.write(f'METEOR: {add_loss}\n')
-            f.write(f'ROUGE: {rouge_loss}\n')
-
+        
         self.log("val_loss", loss, prog_bar=True)
 
-        del self.teacher_activations
-        self.teacher_activations = {}
+        for i in range(0,len(preds)):
+            self.validation_step_outputs.append({
+            "image_id": str(vid_id[i]),  # Make sure this is just an integer, not a tensor
+            "caption": preds[i]
+        })
+            
+        del self.teacher_encoder_activations
+        del self.student_decoder_activations
+        del self.teacher_decoder_activations
+        self.teacher_encoder_activations = {}
+        self.student_decoder_activations = {}
+        self.teacher_decoder_activations = {}
+
+        # Optionally, you can save the results to a file here,
+        # or you can return them and collect them in `validation_epoch_end`
         return loss
+    
+    def on_validation_epoch_end(self):
+        # We call metrics which has a function to calculate BLEU-4, Rouge, Cider, and Meteor
+        metrics.calculate_score(self.validation_step_outputs, self.logpath + '/' + 'validation_' + self.filename, self.logpath)
+        self.validation_step_outputs.clear()
+
+    def test_step(self, batch, batch_idx):
+        x, y, caption_id,vid_id = batch['frames'], batch['caption'], batch['caption-id'],batch['vid-id']
+
+        # We are performing both decoders to see which has better performance
+        student_decoder_output = self.student.greedy_decode(x, max_len=y.shape[-1]+5)
+
+        # Decoding the greedy prediction from student using teacher tokenizer
+        preds = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in student_decoder_output]
+
+        # Decoding the captions in Ground Truth with tokenizer
+        caps = [self.teacher.tokenizer.decode(c.tolist(), skip_special_tokens=True) for c in y]
+
+        # Add BLEU for student
+        caps = [[c] for c in caps]
+        
+        loss = metrics.calculate_bleu_score_corpus(caps, preds)
+
+        with open(self.logpath + '/' + self.filename, 'a') as f:
+            f.write("\n" * 2)
+            f.write("Test Results\n")
+            f.write(f'Epoch: {self.current_epoch}\n')
+            f.write(f'Ground-Truth Captions: {caps}\n')
+            f.write(f'Student Predictions: {preds}\n')
+
+        self.log("test_loss", loss, prog_bar=True)
+
+        for i in range(0, len(preds)):
+            self.test_step_outputs.append({
+            "image_id": str(vid_id[i]),  # Make sure this is just an integer, not a tensor
+            "caption": preds[i]
+        })
+
+        del self.teacher_encoder_activations
+        del self.student_decoder_activations
+        del self.teacher_decoder_activations
+        self.teacher_encoder_activations = {}
+        self.student_decoder_activations = {}
+        self.teacher_decoder_activations = {}
+        return loss
+    
+    def on_test_epoch_end(self):
+        # We call metrics which has a function to calculate BLEU-4, Rouge, Cider, and Meteor
+        metrics.calculate_score(self.test_step_outputs, self.logpath + '/' + 'test_' + self.filename, self.logpath)
+        self.test_step_outputs.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.student.parameters(), lr=self.lr)
@@ -797,14 +1112,44 @@ class DistillationTrainer(L.LightningModule):
                                                                   patience=4,
                                                                   min_lr=1e-8,
                                                                   factor=0.5)
+        total_steps = self.epochs * self.steps
+        scheduler = OneCycleLR(optimizer, max_lr=0.01, total_steps=total_steps)
 
         return [optimizer], [{"scheduler": lr_scheduler, "interval": "epoch", "monitor": "val_loss"}]
 
-    def get_teacher_activation(self, name):
+    def get_teacher_encoder_activation(self, name):
         def hook(model, input, output):
-            if name in self.teacher_activations:
-                self.teacher_activations[name].append(output.detach())
+            if name in self.teacher_encoder_activations:
+                self.teacher_encoder_activations[name].append(output.detach())
             else:
-                self.teacher_activations[name] = [output.detach()]
+                self.teacher_encoder_activations[name] = [output.detach()]
 
         return hook
+    
+    def get_student_decoder_activation(self, name):
+        def hook(model, input, output):
+            if name in self.student_decoder_activations:
+                self.student_decoder_activations[name].append(output.detach())
+            else:
+                self.student_decoder_activations[name] = [output.detach()]
+
+        return hook
+    
+    def get_teacher_decoder_activation(self, name):
+        def hook(model, input, output):
+            if name in self.teacher_decoder_activations:
+                self.teacher_decoder_activations[name].append(output.detach())
+            else:
+                self.teacher_decoder_activations[name] = [output.detach()]
+
+        return hook
+
+    def teardown(self, stage: str) -> None:
+        for hook in self.teacher_encoder_hooks:
+            hook.remove()
+
+        for hook in self.teacher_decoder_hooks:
+            hook.remove()
+
+        for hook in self.student_decoder_hooks:
+            hook.remove()
