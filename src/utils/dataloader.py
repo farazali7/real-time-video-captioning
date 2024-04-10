@@ -34,7 +34,7 @@ def image_transform():
 
 class CaptionDataset(Dataset):
     def __init__(self, data_path: str, vid_ids: List[str], data: pd.DataFrame, encoded_caption_data: Dict,
-                 transform: Optional[Any] = None, num_frames: int = 10, random_state: Optional[Any] = None):
+                 transform: Optional[Any] = None, num_frames: int = 6, random_state: Optional[Any] = None):
         """Dataset for loading videos with respective captions as ground-truth labels.
 
         Args:
@@ -79,7 +79,7 @@ class CaptionDataset(Dataset):
         frames = torch.stack([self.transform(frame) for frame in raw_frames])
 
         # frames shape: [N, C, 224, 224], caption shape: [?]
-        return {'frames': frames, 'caption': encoded_caption,'caption-id':caption_id}
+        return {'frames': frames, 'caption': encoded_caption, 'caption-id': caption_id, 'vid-id': vid_id}
 
 
 def collate_fn(batch: Any):
