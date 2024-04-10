@@ -17,6 +17,7 @@ from config import cfg
 from src.models.model import StudentCandidateV1, GenerativeImageTextTeacher
 from .utils.dataloader import CaptionDataset, collate_fn
 
+
 def inference(data_args, model_args, teacher_model_args, run_name, device):
     dataset = CaptionDataset(**data_args)
     dataloader = DataLoader(dataset, batch_size=cfg['TRAIN']['BATCH_SIZE'], shuffle=False,
@@ -55,6 +56,7 @@ def inference(data_args, model_args, teacher_model_args, run_name, device):
         print(f"Ground Truth: {caps}")
         print(f"Predictions: {preds}")
         break
+
 
 if __name__ == "__main__":
     """
