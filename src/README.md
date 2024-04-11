@@ -49,3 +49,24 @@ The `train.py` script is designed for training models using a knowledge distilla
 - Conducting the training loop, including forward and backward passes, and updating model weights.
 
 It uses the PyTorch Lightning framework to streamline the training loop and relies on WANDB for experiment tracking. The script also includes provisions for model evaluation post-training.
+
+
+## Metrics Module
+
+The `metrics.py` file contains functions to calculate various metrics that evaluate the quality of the generated captions against a set of reference captions.
+
+### BLEU Score Calculation
+
+The `calculate_bleu_score_corpus` function computes the BLEU score, a common metric for evaluating the quality of text which has been machine-translated from one natural language to another. This function computes corpus BLEU-4 scores, which consider the precision of matching n-grams between the candidate and reference sentences up to 4-grams, with penalties for short candidate sentences.
+
+### COCO Evaluation
+
+Additionally, the script integrates the COCO evaluation toolkit, which allows for a wide range of captioning metrics such as BLEU, METEOR, ROUGE, CIDEr, and more. The `calculate_score` function saves the generated captions into a JSON file, reads the actual annotations for the images, and leverages the COCO evaluation tool to compute the various scores. The results are saved and can also be printed for convenience.
+
+### Usage in Training Pipeline
+
+During training, especially after validation or testing phases, you can use these functions to evaluate the quality of generated captions. The computed scores provide quantitative insights into how well the models are performing, guiding improvements in model architecture, training processes, or hyperparameters.
+
+### Setup
+
+Ensure that you have the necessary data annotations and that the NLTK toolkit is correctly installed and configured. You may need to download additional NLTK resources such as tokenizers using `nltk.download('punkt')`.

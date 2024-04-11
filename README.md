@@ -250,8 +250,8 @@ data
       │   └── ...
       ├── structured-symlinks (generated on run)
       │   └── ...
-      ├── videos
-      │   └── ...
+      └── videos
+          └── ...
 ```
 
 
@@ -476,7 +476,7 @@ And that `wandb_run_name` can be found after atleast running the training once i
 ├── results
 │   └── run (creates after first run)
 │        └── <wandb_run_name> <-- This is what we want
-|             └── ...
+│             └── ...
 ```
 
 This should load just the student model weights, freeze them using `model.eval()`, and then run the inference and compare with the ground truth captions from the test dataloader.
