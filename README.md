@@ -237,7 +237,7 @@ To keep things clear, an expected repository structure has been provided below:
 ```
 
 
-## Installing the MSRVTT dataset.
+## Installing the MSRVTT dataset
 
 Install the `MSRVTT` dataset from this [link](https://cove.thecvf.com/datasets/839). Unzip the contents and move the `MSRVTT` folder to the `data` directory as shown in the repository structure. Its contents should look like this:
 
@@ -494,6 +494,8 @@ This project was created for educational purposes and any content from external 
 ## Citation
 
 If you find our work useful in your research, please consider citing:
+
+```citation
 @misc{
    real_time_video_captioning,
    title={Real-Time Video Captioning Systems},
@@ -503,3 +505,4 @@ If you find our work useful in your research, please consider citing:
    journal={GitHub repository},
    howpublished={https://github.com/farazali7/real-time-video-captioning}
 }
+```
