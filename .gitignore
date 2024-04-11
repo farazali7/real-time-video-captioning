@@ -1,7 +1,5 @@
 # LOCAL ARTIFACTS
-data/
-!data/README.md
-!data/.gitkeep
+data/MSRVTT
 results/
 !results/.gitkeep
 !results/run/.gitkeep
