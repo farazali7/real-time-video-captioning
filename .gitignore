@@ -1,11 +1,8 @@
 # LOCAL ARTIFACTS
-data/
-!data/.gitkeep
-results/
-!results/.gitkeep
-!results/run/.gitkeep
+data/MSRVTT
+results/run/
+results/model.pt
 output/
-!output/.gitkeep
 wandb/
 !wandb/.gitkeep
 generativeimage2text/

@@ -1,5 +1,5 @@
 include requirements.txt
-recursive-include GenerativeImage2Text *
+recursive-include generativeimage2text *
 recursive-include data *
 recursive-include utils *
 recursive-include tests *
