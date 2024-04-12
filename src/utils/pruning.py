@@ -7,7 +7,7 @@ import pandas as pd
 from transformers import BertTokenizer
 import re
 
-from src.utils.io import load_kd_student_model
+from src.utils.io import load_kd_student_model, load_pruned_model
 
 from config import cfg
 
@@ -77,17 +77,19 @@ if __name__ == "__main__":
 
     ckpt_path = 'results/2l_ce_kl_epoch19_100424.ckpt'
 
-    # Create a series of pruned models, ranging from 10-50% pruning
-    ratios = np.arange(0.1, 0.6, 0.1)
-    for ratio in ratios:
-        # Load a fresh pretrained student model
-        pretrained_student = load_kd_student_model(ckpt_path, student_model_args)
+    # # Create a series of pruned models, ranging from 10-50% pruning
+    # ratios = np.arange(0.1, 0.6, 0.1)
+    # for ratio in ratios:
+    #     # Load a fresh pretrained student model
+    #     pretrained_student = load_kd_student_model(ckpt_path, student_model_args)
+    #
+    #     # Prune the model
+    #     pruned = global_prune_model(pretrained_student, ratio=ratio)
+    #
+    #     # Save the model for future experimentation
+    #     model_path = f'results/pruned/2l_ce_kl_e19_{round(ratio, 1)}pr.pth'
+    #     torch.save(pruned.state_dict(), model_path)
 
-        # Prune the model
-        pruned = global_prune_model(pretrained_student, ratio=ratio)
-
-        # Save the model for future experimentation
-        model_path = f'results/pruned/2l_ce_kl_e19_{round(ratio, 1)}pr.pth'
-        torch.save(pruned.state_dict(), model_path)
+    m = load_pruned_model('results/pruned/2l_ce_kl_e19_0.1pr.pth', student_model_args)
 
     print('Done')

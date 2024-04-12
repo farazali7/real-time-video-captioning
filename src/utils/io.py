@@ -33,3 +33,33 @@ def load_kd_student_model(ckpt_path: str, model_args: Dict) -> Module:
     del student.decoder_layer
 
     return student
+
+
+def load_pruned_model(model_path: str, model_args: Dict) -> Module:
+    """
+    Load a pruned student model.
+    Args:
+        model_path: Path to pruned model file
+        model_args: Dictionary of keyword arguments for constructor
+
+    Returns:
+        Student model with no auxiliary projector layers
+    """
+    student = StudentCandidateV1(**model_args)
+
+    # Delete projectors (these are irrelevant for inference and usually have
+    # a LazyMixin layer which causes issues with model metadata inquiries
+    del student.project_decoder
+    del student.project
+    del student.upsample
+    del student.projectors
+
+    # Delete extra student decoder layer
+    del student.decoder_layer
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    student_state_dict = torch.load(model_path, map_location=device)
+    student.load_state_dict(student_state_dict)
+
+    return student
+
