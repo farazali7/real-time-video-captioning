@@ -29,4 +29,7 @@ def load_kd_student_model(ckpt_path: str, model_args: Dict) -> Module:
     del student.upsample
     del student.projectors
 
+    # Delete extra student decoder layer
+    del student.decoder_layer
+
     return student

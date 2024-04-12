@@ -2,8 +2,10 @@ import pickle
 import torch
 from torch.nn import Module
 from torch.nn.utils import prune
+import numpy as np
 import pandas as pd
 from transformers import BertTokenizer
+import re
 
 from src.utils.io import load_kd_student_model
 
@@ -22,10 +24,33 @@ def global_prune_model(model: Module, ratio: float) -> Module:
     Returns:
         Pruned model instance
     """
-    prune.global_unstructured(parameters=model, pruning_method=prune.l1_unstructured, amount=ratio)
+    # Build tuple of parameters and weight name
+    # Need to evaluate model modules so convert strings of the form:
+    # chars.#.chars -> chars[#].chars
+    pattern = r'(.+)\.(\d)\.(.+)'
+    params = [p for p in model.named_parameters() if 'weight' in p[0]]
+    for idx, (name, p) in enumerate(params):
+        # First fix the naming of the weight variables ('weight' for all modules except MHA)
+        if 'in_proj_weight' in name:  # For Multi-Head Attention layers
+            param_name = 'in_proj_weight'
+        else:
+            param_name = 'weight'
+        name = f'model.{name.replace(f".{param_name}", "")}'
+
+        # Now replace chars.#.chars -> chars[#].chars for later eval() call to work
+        match = re.match(pattern, name)
+        if match:
+            prefix, num, suffix = match.groups()
+            name = f'{prefix}[{num}].{suffix}'
+
+        # Evaluate name as actual nn.Module
+        params[idx] = (eval(name), param_name)
+
+    prune.global_unstructured(parameters=params, pruning_method=prune.L1Unstructured, amount=ratio)
 
     # Make it permanent (i.e., shift pruned named parameter to original parameter naming and drop mask)
-    prune.remove(module=model, name='')
+    for module, param_name in params:
+        prune.remove(module=module, name=param_name)
 
     return model
 
@@ -41,7 +66,7 @@ if __name__ == "__main__":
 
     vocab_length = len(tokenizer.vocab)
 
-    student_model_def, teacher_model_def = train_args['STUDENT_MODEL_DEF'], train_args['TEACHER_MODEL_DEF']
+    student_model_def = train_args['STUDENT_MODEL_DEF']
 
     student_model_args = {
         **cfg['MODEL'][student_model_def],
@@ -50,9 +75,19 @@ if __name__ == "__main__":
         'sep_token_id': tokenizer.sep_token_id
     }
 
-    teacher_model_args = cfg['MODEL'][teacher_model_def]
-
     ckpt_path = 'results/2l_ce_kl_epoch19_100424.ckpt'
-    student_model = load_kd_student_model(ckpt_path, student_model_args)
+
+    # Create a series of pruned models, ranging from 10-50% pruning
+    ratios = np.arange(0.1, 0.6, 0.1)
+    for ratio in ratios:
+        # Load a fresh pretrained student model
+        pretrained_student = load_kd_student_model(ckpt_path, student_model_args)
+
+        # Prune the model
+        pruned = global_prune_model(pretrained_student, ratio=ratio)
+
+        # Save the model for future experimentation
+        model_path = f'results/pruned/2l_ce_kl_e19_{round(ratio, 1)}pr.pth'
+        torch.save(pruned.state_dict(), model_path)
 
     print('Done')
