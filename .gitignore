@@ -1,7 +1,6 @@
 # LOCAL ARTIFACTS
 data/MSRVTT
-results/run/
-results/model.pt
+results/
 output/
 wandb/
 !wandb/.gitkeep

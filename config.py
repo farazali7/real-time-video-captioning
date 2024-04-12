@@ -80,7 +80,7 @@ cfg = {
             'n_head': 8,
             'd_ffn': 1024,
             'dropout': 0.3,
-            'num_decoder_layers': 1
+            'num_decoder_layers': 2
         },
         'GenerativeImageTextTeacher': 
         {
