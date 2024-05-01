@@ -19,7 +19,7 @@ import pickle
 
 from config import cfg
 from src.models.model import StudentCandidateV1, GenerativeImageTextTeacher, DistillationTrainer
-from .utils.dataloader import CaptionDataset, collate_fn
+from src.utils.dataloader import CaptionDataset, collate_fn
 
 # Set WANDB mode from config
 os.environ['WANDB_MODE'] = cfg['WANDB']['MODE']
