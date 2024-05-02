@@ -1,31 +1,26 @@
 '''
 Import Statements
 '''
+import functools
+
+import lightning as L
+import numpy as np
+import timm
 import torch
 import torch.nn as nn
 from generativeimage2text.layers.decoder import CaptioningModel, BeamHypotheses, top_k_top_p_filtering, \
     GeneratorWithBeamSearch
-from generativeimage2text.model import get_image_encoder, TransformerDecoderTextualHead
 from generativeimage2text.layers.decoder import convert2valid
-from generativeimage2text.tsv_io import load_from_yaml_file
+from generativeimage2text.model import get_image_encoder, TransformerDecoderTextualHead
 from generativeimage2text.torch_common import load_state_dict
-from transformers import BertTokenizer
-import functools
+from generativeimage2text.tsv_io import load_from_yaml_file
 from torch.nn import functional as F
-import timm
-import lightning as L
-import numpy as np
-import torchvision.transforms.functional as TF
-import hashlib
 from torch.optim.lr_scheduler import OneCycleLR
-import time
-import av
-from transformers import AutoImageProcessor, AutoTokenizer, VisionEncoderDecoderModel
-from src.utils.masking import create_padding_mask, create_casual_mask
+from transformers import BertTokenizer
+
 import src.metrics as metrics
-import os
 from config import cfg
-import uuid
+from src.utils.masking import create_padding_mask, create_casual_mask
 
 '''
 If you have NVIDIA CUDA
